@@ -257,8 +257,18 @@ var kez = new Hero { Id = 145, Name = "Kez", InternalName = "npc_dota_hero_kez" 
 var largo = new Hero { Id = 155, Name = "Largo", InternalName = "npc_dota_hero_largo" };
 Check(kez.PortraitUrl.EndsWith("/heroes/kez.png"), "Kez portrait URL must use Valve filename");
 Check(largo.PortraitUrl.EndsWith("/heroes/largo.png"), "Largo portrait URL must use Valve filename");
-Check(PositionProfile.IsStandard(kez, 1) && PositionProfile.IsStandard(largo, 5),
-    "Kez and Largo must be available for their supported roles");
+Check(PositionProfile.IsStandard(kez, 1),
+    "Kez must remain available on carry");
+Check(PositionProfile.IsStandard(largo, 3) &&
+      PositionProfile.IsStandard(largo, 4) &&
+      PositionProfile.IsStandard(largo, 5),
+    "Largo must be available on offlane and both support roles");
+Check(!PositionProfile.IsStandard(largo, 1),
+    "Largo must not be automatically recommended as carry");
+var largoOfflane = engine.Rank([largo, kez], [], [], 3, new HashSet<int>(),
+    new Dictionary<int, IReadOnlyList<Matchup>>(), null, 0, HeroPoolMode.All);
+Check(largoOfflane.Count == 1 && largoOfflane[0].Hero.Id == 155,
+    "Position 3 recommendation list must include Largo in standard role mode");
 Check(new Hero { Id = 17, Name = "Test", InternalName = "npc_dota_hero_largo",
     ImagePath = "/apps/dota2/images/dota_react/heroes/largo.png" }
     .PortraitUrl.EndsWith("/heroes/largo.png"),
