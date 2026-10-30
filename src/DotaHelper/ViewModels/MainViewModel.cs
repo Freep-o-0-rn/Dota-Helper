@@ -102,6 +102,12 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
     }
 
+    public async Task CheckStratzConnectionAsync()
+    {
+        Status = "Проверка соединения STRATZ...";
+        Status = await _positions.CheckConnectionAsync();
+    }
+
     public string ProfileSummary
     {
         get => _profileSummary;
