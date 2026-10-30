@@ -58,21 +58,27 @@ public sealed class OpenDotaClient
                     displayName = en.GetString();
                 displayName ??= internalName.Replace("npc_dota_hero_", "");
 
+                var attr = item.TryGetProperty("primary_attr", out var a) &&
+                    a.ValueKind == JsonValueKind.Number &&
+                    a.TryGetInt32(out var attrId)
+                        ? attrId switch { 0 => "str", 1 => "agi",
+                            2 => "int", 3 => "all", _ => null }
+                        : null;
                 if (byId.TryGetValue(id, out var existing))
                 {
                     if (string.IsNullOrWhiteSpace(existing.Name))
                         existing.Name = displayName;
                     if (string.IsNullOrWhiteSpace(existing.InternalName))
                         existing.InternalName = internalName;
+                    if (string.IsNullOrWhiteSpace(existing.PrimaryAttribute))
+                        existing.PrimaryAttribute = attr;
                 }
                 else
                 {
-                    // Brand-new heroes have unknown statistical role tags,
-                    // but can still appear via explicit position profiles.
                     byId[id] = new Hero
                     {
                         Id = id, InternalName = internalName, Name = displayName,
-                        Roles = []
+                        PrimaryAttribute = attr, Roles = []
                     };
                 }
             }
@@ -88,7 +94,49 @@ public sealed class OpenDotaClient
         if (byId.Count == 0)
             throw new InvalidOperationException(
                 "Каталог героев пуст.", openDotaError);
+
+        // Official Russian hero names cover new heroes and non-English input
+        // without maintaining a separate manual translation for each name.
+        // Localization is optional: an unavailable Valve feed never hides heroes.
+        try
+        {
+            using var ru = await GetCachedAsync<JsonDocument>(
+                "valve-herolist-ru.json",
+                "https://www.dota2.com/datafeed/herolist?language=russian",
+                TimeSpan.FromDays(1));
+            foreach (var (heroId, russianName) in ParseRussianHeroNames(ru.RootElement))
+            {
+                if (byId.TryGetValue(heroId, out var hero))
+                    hero.RussianName = russianName;
+            }
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or JsonException
+            or HttpRequestException or KeyNotFoundException or InvalidDataException)
+        {
+            // HeroSearch also supports Russian keyboard layout, transliteration
+            // and community nicknames when the localization endpoint is offline.
+        }
         return byId.Values.OrderBy(h => h.Name).ToList();
+    }
+
+    public static IReadOnlyDictionary<int, string> ParseRussianHeroNames(JsonElement root)
+    {
+        var result = new Dictionary<int, string>();
+        var heroes = root.GetProperty("result").GetProperty("data").GetProperty("heroes");
+        if (heroes.ValueKind != JsonValueKind.Array)
+            throw new JsonException("Invalid Valve Russian hero list.");
+        foreach (var entry in heroes.EnumerateArray())
+        {
+            if (!entry.TryGetProperty("id", out var id) ||
+                !id.TryGetInt32(out var heroId) || heroId <= 0 ||
+                !entry.TryGetProperty("name_loc", out var localized) ||
+                localized.ValueKind != JsonValueKind.String) continue;
+            var name = localized.GetString()?.Trim();
+            if (!string.IsNullOrWhiteSpace(name) &&
+                name.Any(ch => ch is >= 'А' and <= 'я' || ch is 'Ё' or 'ё'))
+                result[heroId] = name;
+        }
+        return result;
     }
 
     public async Task<PlayerProfile> GetPlayerProfileAsync(long accountId)
