@@ -25,6 +25,108 @@ public sealed class StratzClient
         "DotaHelper", "cache");
     private readonly SemaphoreSlim _requestLock = new(1, 1);
 
+    /// <summary>
+    /// Remove common copy/paste wrappers, never log or display the secret.
+    /// Accept either a raw token or text copied as "Bearer <token>".
+    /// </summary>
+    public static string NormalizeToken(string? raw)
+    {
+        var token = (raw ?? "").Trim().Trim('"', '\'').Trim();
+        if (token.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+            token = token["Bearer ".Length..].Trim().Trim('"', '\'').Trim();
+        return token;
+    }
+
+    /// <summary>
+    /// Differentiate credential rejection from an upstream protection challenge.
+    /// Only returns diagnostic labels; response bodies and secrets are never logged.
+    /// </summary>
+    public static string DescribeHttpError(HttpStatusCode status, string? contentType,
+        string? responseBody, string? cfMitigated = null)
+    {
+        var code = (int)status;
+        var cloudflareChallenge =
+            string.Equals(cfMitigated, "challenge", StringComparison.OrdinalIgnoreCase) ||
+            (responseBody?.Contains("cf-chl", StringComparison.OrdinalIgnoreCase) ?? false) ||
+            (responseBody?.Contains("Just a moment", StringComparison.OrdinalIgnoreCase) ?? false) ||
+            (responseBody?.Contains("Attention Required", StringComparison.OrdinalIgnoreCase) ?? false);
+        if (status == HttpStatusCode.Forbidden && cloudflareChallenge)
+            return "HTTP 403: запрос заблокирован проверкой Cloudflare ДО проверки токена. " +
+                   "Токен может быть действительным. Проверь доступ из браузера и обратись в поддержку STRATZ.";
+        if (status == HttpStatusCode.Forbidden &&
+            (contentType?.Contains("text/html", StringComparison.OrdinalIgnoreCase) ?? false))
+            return "HTTP 403: доступ запрещён HTML-защитой сайта (возможно Cloudflare). " +
+                   "Это НЕ подтверждение неправильного токена.";
+        if (status == HttpStatusCode.Forbidden)
+            return "HTTP 403: STRATZ запретил доступ. Возможны ограничения токена, IP-адреса " +
+                   "или защита сайта. Причину нужно уточнить, токен не обязательно неверный.";
+        if (status == HttpStatusCode.Unauthorized)
+            return "HTTP 401: STRATZ не принимает авторизацию. Проверь, что скопирован " +
+                   "полный API-токен без лишних символов и что он ещё действителен.";
+        if (code == 429)
+            return "HTTP 429: превышен лимит запросов STRATZ; повтори проверку позднее.";
+        if (code is 400 or 422)
+            return $"HTTP {code}: STRATZ отклонил формат запроса или GraphQL-схему, а не обязательно токен.";
+        if (code >= 500)
+            return $"HTTP {code}: временная ошибка сервера STRATZ.";
+        return $"HTTP {code}: запрос STRATZ завершился ошибкой; токен не проверен.";
+    }
+
+    private static HttpRequestMessage CreateGraphQlRequest(string token, string query)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Post, "https://api.stratz.com/graphql");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        request.Headers.UserAgent.ParseAdd("STRATZ_API");
+        request.Content = new StringContent(
+            JsonSerializer.Serialize(new { query }), Encoding.UTF8, "application/json");
+        return request;
+    }
+
+    private static async Task CheckHttpResponseAsync(HttpResponseMessage response)
+    {
+        if (response.IsSuccessStatusCode) return;
+        var body = await response.Content.ReadAsStringAsync();
+        response.Headers.TryGetValues("cf-mitigated", out var mitigated);
+        response.Headers.TryGetValues("cf-ray", out var rays);
+        var info = DescribeHttpError(response.StatusCode,
+            response.Content.Headers.ContentType?.MediaType, body, mitigated?.FirstOrDefault());
+        // CF ray identifies only the edge request, not the user's credential.
+        var ray = rays?.FirstOrDefault();
+        if (!string.IsNullOrWhiteSpace(ray) && ray.Length <= 64)
+            info += $" CF-RAY: {ray}.";
+        throw new InvalidOperationException(info);
+    }
+
+    public async Task<string> CheckConnectionAsync()
+    {
+        var token = NormalizeToken(Environment.GetEnvironmentVariable("STRATZ_API_TOKEN"));
+        if (string.IsNullOrWhiteSpace(token))
+            return "STRATZ_API_TOKEN не найден в переменных окружения текущего процесса.";
+        try
+        {
+            using var request = CreateGraphQlRequest(token, "query { __typename }");
+            using var response = await Http.SendAsync(request);
+            await CheckHttpResponseAsync(response);
+            var json = await response.Content.ReadAsStringAsync();
+            using var doc = JsonDocument.Parse(json);
+            if (doc.RootElement.TryGetProperty("errors", out var errors) &&
+                errors.ValueKind == JsonValueKind.Array && errors.GetArrayLength() > 0)
+                return "STRATZ ответил на запрос, но вернул ошибку GraphQL (HTTP 200).";
+            if (!doc.RootElement.TryGetProperty("data", out var data) ||
+                !data.TryGetProperty("__typename", out _))
+                return "STRATZ ответил, но структура ответа неожиданная.";
+            return "Соединение STRATZ: HTTP 200, токен принят. Проверка доступа успешна.";
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or HttpRequestException
+            or TaskCanceledException or JsonException)
+        {
+            // Exception from CheckHttpResponseAsync never contains token or body.
+            return ex is InvalidOperationException ? ex.Message :
+                $"Не удалось связаться с STRATZ ({ex.GetType().Name}). Проверь сеть и доступ к API.";
+        }
+    }
+
+
     // STRATZ bracketBasicIds groups two medals into one statistical bracket.
     public static string BracketName(int rank, bool professional) =>
         professional ? "DIVINE_IMMORTAL" : rank switch
@@ -65,7 +167,7 @@ public sealed class StratzClient
             catch (Exception ex) when (ex is IOException or JsonException) { }
         }
 
-        var token = Environment.GetEnvironmentVariable("STRATZ_API_TOKEN");
+        var token = NormalizeToken(Environment.GetEnvironmentVariable("STRATZ_API_TOKEN"));
         if (string.IsNullOrWhiteSpace(token))
         {
             if (File.Exists(path))
@@ -94,17 +196,9 @@ public sealed class StratzClient
             var query = "query { heroStats { stats(heroIds: [" +
                 string.Join(",", ids) + "]" + bracketArg +
                 ", groupByPosition: true) { heroId position matchCount winCount } } }";
-            using var request = new HttpRequestMessage(
-                HttpMethod.Post, "https://api.stratz.com/graphql");
-            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token.Trim());
-            request.Headers.UserAgent.ParseAdd("DotaHelper/0.5");
-            request.Content = new StringContent(
-                JsonSerializer.Serialize(new { query }), Encoding.UTF8, "application/json");
+            using var request = CreateGraphQlRequest(token, query);
             using var response = await Http.SendAsync(request);
-            if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
-                throw new InvalidOperationException(
-                    "STRATZ отклонил токен. Получи новый на stratz.com/api.");
-            response.EnsureSuccessStatusCode();
+            await CheckHttpResponseAsync(response);
             var json = await response.Content.ReadAsStringAsync();
             var snapshot = FromJson(json, false); // Validate response before caching.
             if (snapshot.ByHero.Count == 0)
@@ -167,7 +261,7 @@ public sealed class StratzClient
             if (existing.HasValue) return existing.Value;
         }
 
-        var token = Environment.GetEnvironmentVariable("STRATZ_API_TOKEN");
+        var token = NormalizeToken(Environment.GetEnvironmentVariable("STRATZ_API_TOKEN"));
         if (string.IsNullOrWhiteSpace(token))
         {
             var offline = await ReadCacheAsync(true);
@@ -189,16 +283,9 @@ public sealed class StratzClient
             var query = "query { heroStats { matchUp(heroId: " +
                 enemyHeroId + bracketFilter +
                 ", take: 200) { vs { heroId2 winCount matchCount } } } }";
-            using var request = new HttpRequestMessage(
-                HttpMethod.Post, "https://api.stratz.com/graphql");
-            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token.Trim());
-            request.Headers.UserAgent.ParseAdd("DotaHelper/0.6");
-            request.Content = new StringContent(
-                JsonSerializer.Serialize(new { query }), Encoding.UTF8, "application/json");
+            using var request = CreateGraphQlRequest(token, query);
             using var response = await Http.SendAsync(request);
-            if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
-                throw new InvalidOperationException("STRATZ отклонил API-токен.");
-            response.EnsureSuccessStatusCode();
+            await CheckHttpResponseAsync(response);
             var json = await response.Content.ReadAsStringAsync();
             var parsed = ParseMatchups(json, enemyHeroId);
             if (parsed.Count == 0)
