@@ -51,8 +51,8 @@ public sealed class RecommendationEngine
         var candidates = heroes.Where(hero =>
         {
             if (alreadyPicked.Contains(hero.Id)) return false;
-            // Broad Support/Disabler tags do NOT establish positions 4/5.
-            // Only an explicit Experimental choice can bypass this gate.
+            // Broad Carry/Support/Durable/Disabler tags are not observed positions.
+            // Enforce the same eligibility gate for positions 1, 2, 3, 4 and 5.
             if (pool != HeroPoolMode.Experimental &&
                 !PositionProfile.IsStandard(hero, position)) return false;
             if (pool == HeroPoolMode.Favorites) return favorites.Contains(hero.Id);
@@ -95,9 +95,9 @@ public sealed class RecommendationEngine
                 : 0;
 
             var isStandard = PositionProfile.IsStandard(hero, position);
-            var roleFit = position is 4 or 5
-                ? (isStandard ? (position == 4 ? .80 : .82) : .12)
-                : RoleFit(hero, position);
+            // Same position-confidence prior across all five roles.
+            // This is a manual eligibility prior, NOT data on role-specific wins.
+            var roleFit = isStandard ? .82 : .12;
             var favorite = favorites.Contains(hero.Id);
             double metaAdjustment = 0;
             double popularityAdjustment = 0;
@@ -132,15 +132,9 @@ public sealed class RecommendationEngine
             var score = Math.Clamp(50 + roleAdjustment + matchupAdjustment
                 + metaAdjustment + popularityAdjustment + (favorite ? 4 : 0), 0, 100);
 
-            string roleLabel = position is 4 or 5
-                ? (isStandard
-                    ? "Поддержка: базовый список позиции, не данные текущего патча"
-                    : "НЕСТАНДАРТНЫЙ пик: позиция не подтверждена")
-                : roleFit >= .7
-                    ? "Архетип подходит роли (приблизительно)"
-                    : roleFit >= .5
-                        ? "Архетип частично подходит роли"
-                        : "Позиция не подтверждена";
+            string roleLabel = isStandard
+                ? $"Позиция {position}: предварительно подходит (ручной пул, без статистики по патчу)"
+                : $"НЕСТАНДАРТНЫЙ пик на позицию {position}: данных о пригодности нет";
             string evidence = pickedEnemies.Count == 0
                 ? "Матчапы: враги не выбраны"
                 : $"Матчапы: {measured}/{pickedEnemies.Count} противников";
@@ -155,9 +149,9 @@ public sealed class RecommendationEngine
                 EvidenceLabel = evidence,
                 IsRare = rare,
                 IsNonStandard = !isStandard,
-                PositionLabel = position is 4 or 5
-                    ? (isStandard ? "✓ Пул поддержки" : "⚠ Нестандартная роль")
-                    : "Роль оценена приблизительно"
+                PositionLabel = isStandard
+                    ? $"✓ Базовый пул позиции {position}"
+                    : $"⚠ Нестандартный герой для позиции {position}"
             });
         }
 
@@ -169,21 +163,4 @@ public sealed class RecommendationEngine
             .ToList();
     }
 
-    private static double RoleFit(Hero hero, int position)
-    {
-        var tags = (hero.Roles ?? []).ToHashSet(StringComparer.OrdinalIgnoreCase);
-        bool Has(string tag) => tags.Contains(tag);
-
-        return position switch
-        {
-            1 => Has("Carry") ? .83 : .25,
-            2 => Has("Nuker") ? .78 : Has("Carry") ? .66 : .30,
-            3 => Has("Durable") || Has("Initiator") ? .80 :
-                 Has("Disabler") ? .60 : .28,
-            4 => Has("Support") || Has("Disabler") ? .75 :
-                 Has("Initiator") ? .64 : .28,
-            5 => Has("Support") ? .84 : Has("Disabler") ? .55 : .22,
-            _ => .5
-        };
-    }
 }
