@@ -62,8 +62,23 @@ public partial class MainWindow : Window
         };
     }
 
-    private async void Window_Loaded(object sender, RoutedEventArgs e) =>
+    private async void Window_Loaded(object sender, RoutedEventArgs e)
+    {
         await _viewModel.InitializeAsync();
+        // Zero-click mode: capture starts as soon as hero metadata is ready.
+        // An absent game is normal; the timer will detect it when launched.
+        await StartScreenAsync();
+        try
+        {
+            if (await Task.Run(DotaGsiService.FindDotaRoot) is not null && _gsi is null)
+                ConnectGsi_Click(this, new RoutedEventArgs());
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or
+            InvalidOperationException)
+        {
+            _viewModel.SetGsiStatus("GSI: автоматическое подключение недоступно; " + ex.Message);
+        }
+    }
 
     private async void Refresh_Click(object sender, RoutedEventArgs e)
     {
@@ -227,16 +242,16 @@ public partial class MainWindow : Window
             StopScreenCapture();
             return;
         }
-        if (_screenBusy) return;
+        await StartScreenAsync();
+    }
+
+    private async Task StartScreenAsync()
+    {
+        if (_screenBusy || _screenTimer.IsEnabled) return;
         _screenReader ??= new ScreenDraftReader();
-        if (_screenReader.Calibration is null)
-        {
-            _viewModel.SetScreenStatus("Экран: сначала нажми «Настроить области» и выдели три зоны.");
-            return;
-        }
         if (_viewModel.Heroes.Count == 0)
         {
-            _viewModel.SetScreenStatus("Экран: каталог героев ещё не загружен.");
+            _viewModel.SetScreenStatus("Экран: ожидание каталога героев.");
             return;
         }
 
@@ -244,24 +259,28 @@ public partial class MainWindow : Window
         ScreenStartButton.IsEnabled = false;
         try
         {
-            _viewModel.SetScreenStatus("Экран: загружаю эталонные портреты Valve…");
+            _viewModel.SetScreenStatus("Экран: готовлю локальные эталоны героев…");
             var progress = new Progress<int>(n =>
             {
-                if (_screenBusy && n % 15 == 0)
-                    _viewModel.SetScreenStatus($"Экран: загружено {n} портретов.");
+                if (_screenBusy && n % 25 == 0)
+                    _viewModel.SetScreenStatus($"Экран: {n}/{_viewModel.Heroes.Count} портретов обработано.");
             });
-            var count = await _screenReader.LoadPortraitsAsync(_viewModel.Heroes, progress);
-            if (count < 60)
-                throw new InvalidOperationException(
-                    $"Загружено только {count} эталонов героев. Проверь доступ к Steam CDN.");
+            var count=await _screenReader.LoadPortraitsAsync(_viewModel.Heroes, progress);
+            if(count < 60)
+            {
+                _viewModel.SetScreenStatus(
+                    $"Экран: только {count} эталонов Valve, попробую повторить при следующем запуске.");
+                return;
+            }
             _screenEvidence.Clear();
             _screenTimer.Start();
             ScreenStartButton.Content = "Остановить сканирование";
             _viewModel.SetScreenStatus(
-                $"Экран: активен, {count} эталонов. Переключись в Dota 2 (оконный без рамки).");
+                $"Автоматический режим активен ({count} героев). Ожидаю окно Dota 2.");
         }
-        catch (Exception ex) when (ex is InvalidOperationException or
-            HttpRequestException or System.IO.IOException or UnauthorizedAccessException)
+        catch(Exception ex) when(ex is InvalidOperationException or
+            HttpRequestException or IOException or UnauthorizedAccessException or
+            TaskCanceledException)
         {
             _viewModel.SetScreenStatus("Экран: " + ex.Message);
         }
@@ -298,49 +317,53 @@ public partial class MainWindow : Window
 
     private async void ScreenScan_Tick(object? sender, EventArgs e)
     {
-        if (_screenBusy || _screenReader?.Calibration is not { } calibration)
-            return;
-        if (!ScreenDraftReader.IsDotaForeground())
+        if (_screenBusy || _screenReader is null) return;
+        var window=AutoDotaWindow.Locate();
+        if(window is null)
         {
-            _viewModel.SetScreenStatus(
-                "Экран: ожидаю активное окно Dota 2 — снимки других программ не анализируются.");
+            _screenEvidence.Clear();
+            _viewModel.SetScreenStatus("Экран: ожидаю окно dota2.exe на переднем плане.");
             return;
         }
 
-        _screenBusy = true;
+        _screenBusy=true;
         try
         {
-            var reader = _screenReader;
-            var frame = await Task.Run(() =>
+            var reader=_screenReader;
+            var frame=await Task.Run(() =>
             {
-                using var bmp = ScreenDraftReader.CapturePrimary();
-                return reader.Analyze(bmp, calibration);
+                using var bmp=AutoDotaWindow.Capture(window.Value);
+                return reader.AnalyzeAutomatic(bmp);
             });
-            var radiant = frame.RadiantPicks
-                .Select((h,i) => ConfirmScreenHit($"r{i}", h)).ToArray();
-            var dire = frame.DirePicks
-                .Select((h,i) => ConfirmScreenHit($"d{i}", h)).ToArray();
-            var bans = frame.BannedHeroes
-                .Where(h => ConfirmScreenHit($"b{h.HeroId}", h) is not null)
-                .ToArray();
-
-            var observation = new ScreenDraftObservation(radiant, dire, bans);
-            var updated = _viewModel.ApplyScreenObservation(observation);
+            var radiant=frame.RadiantPicks.Select((hit,i) =>
+                ConfirmScreenHit($"r{i}",hit)).ToArray();
+            var dire=frame.DirePicks.Select((hit,i) =>
+                ConfirmScreenHit($"d{i}",hit)).ToArray();
+            // Bans have much higher risk of false positives: demand three
+            // consecutive independent detections in the same match.
+            var bans=frame.BannedHeroes.Where(hit =>
+            {
+                ConfirmScreenHit($"b{hit.HeroId}",hit);
+                return _screenEvidence.TryGetValue($"b{hit.HeroId}",out var value)
+                    && value.Streak>=3;
+            }).ToArray();
+            var observed=new ScreenDraftObservation(radiant,dire,bans,
+                frame.RadiantPrePicks,frame.DirePrePicks);
+            var added=_viewModel.ApplyScreenObservation(observed);
             _viewModel.SetScreenStatus(
-                $"Экран: Radiant {radiant.Count(h=>h is not null)}/5, " +
-                $"Dire {dire.Count(h=>h is not null)}/5; " +
-                $"подтверждено перечёркнутых героев {bans.Length}. " +
-                (updated > 0 ? $"Добавлено {updated}." :
-                "Нет новых уверенных совпадений."));
+                $"Dota 2: подтверждено пиков {radiant.Count(h=>h is not null)}+" +
+                $"{dire.Count(h=>h is not null)}, препиков " +
+                $"{frame.RadiantPrePicks+frame.DirePrePicks}, " +
+                $"банов {bans.Length}" +
+                (added>0 ? $"; добавлено {added}" : "; новых нет") + ".");
         }
-        catch (Exception ex) when (ex is InvalidOperationException or
-            ArgumentException or System.Runtime.InteropServices.ExternalException)
+        catch(Exception ex) when(ex is InvalidOperationException or ArgumentException or
+            System.Runtime.InteropServices.ExternalException or
+            System.ComponentModel.Win32Exception)
         {
             _viewModel.SetScreenStatus("Экран: " + ex.Message);
-            _screenTimer.Stop();
-            ScreenStartButton.Content = "Начать сканирование";
         }
-        finally { _screenBusy = false; }
+        finally { _screenBusy=false; }
     }
 
     private async void ToggleFavorite_Click(object sender, RoutedEventArgs e) =>
