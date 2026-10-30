@@ -11,6 +11,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
 {
     private readonly OpenDotaClient _api = new();
     private readonly StratzClient _positions = new();
+    private readonly SteamProfileResolver _steam = new();
     private readonly RecommendationEngine _engine = new();
     private readonly PreferencesStore _store = new();
     private readonly SemaphoreSlim _saveGate = new(1, 1);
@@ -25,7 +26,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private PoolOption? _selectedPool;
     private MetaOption? _selectedMeta;
     private string _playerInput = "";
-    private string _profileSummary = "Укажи свой Steam Account ID или SteamID64.";
+    private string _profileSummary = "Укажи SteamID64 или ссылку steamcommunity.com/id/...";
 
     private string _heroSearchText = "";
 
@@ -116,28 +117,10 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     public async Task LoadPlayerProfileAsync()
     {
-        var raw = PlayerInput.Trim();
-        if (Uri.TryCreate(raw, UriKind.Absolute, out var uri))
-            raw = uri.AbsolutePath.TrimEnd('/').Split('/').LastOrDefault() ?? "";
-
-        if (!ulong.TryParse(raw, out var numeric))
-        {
-            ProfileSummary = "Неверный ID. Введи Account ID, SteamID64 или числовую ссылку на профиль.";
-            return;
-        }
-
-        const ulong steam64Base = 76561197960265728UL;
-        if (numeric >= steam64Base) numeric -= steam64Base;
-        if (numeric == 0 || numeric > uint.MaxValue)
-        {
-            ProfileSummary = "ID вне допустимого диапазона Steam Account ID.";
-            return;
-        }
-
-        var accountId = (long)numeric;
         try
         {
-            ProfileSummary = "Получаем публичный рейтинг...";
+            ProfileSummary = "Определяем Steam ID и публичный рейтинг...";
+            var accountId = await _steam.ResolveAsync(PlayerInput);
             var profile = await _api.GetPlayerProfileAsync(accountId);
             _preferences.PlayerAccountId = accountId;
             PlayerInput = accountId.ToString();
@@ -162,7 +145,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
             }
             await SavePreferencesAsync();
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException
+            or HttpRequestException or TaskCanceledException)
         {
             ProfileSummary = $"Не удалось загрузить профиль: {ex.Message}";
         }
