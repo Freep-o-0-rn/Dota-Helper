@@ -135,6 +135,9 @@ public sealed record Recommendation(
     string Explanation)
 {
     public string ScoreLabel => $"{Score:F1}";
+    public int PositionInRanking { get; init; }
+    public string RankLabel => PositionInRanking > 0 ? $"#{PositionInRanking}" : "";
+    public string ScoreBreakdown { get; init; } = "";
     public string FavoriteMark => IsFavorite ? "★" : "☆";
     public string MetaLabel { get; init; } = "Общий WR: нет данных";
     public string PopularityLabel { get; init; } = "Популярность: нет данных";
