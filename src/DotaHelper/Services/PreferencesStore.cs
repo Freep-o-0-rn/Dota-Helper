@@ -7,7 +7,9 @@ public sealed class UserPreferences
 {
     public int SelectedPosition { get; set; } = 3;
     public int SelectedRankBracket { get; set; } = 0;
-    public int SelectedPoolMode { get; set; } = 0;
+    public int SelectedPoolMode { get; set; } = 1;
+    public int MetaMode { get; set; } = 0;
+    public long? PlayerAccountId { get; set; }
     public HashSet<int> FavoriteHeroIds { get; set; } = [];
 }
 
