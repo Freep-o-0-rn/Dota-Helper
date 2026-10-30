@@ -51,6 +51,10 @@ public sealed class RecommendationEngine
         var candidates = heroes.Where(hero =>
         {
             if (alreadyPicked.Contains(hero.Id)) return false;
+            // Broad Support/Disabler tags do NOT establish positions 4/5.
+            // Only an explicit Experimental choice can bypass this gate.
+            if (pool != HeroPoolMode.Experimental &&
+                !PositionProfile.IsStandard(hero, position)) return false;
             if (pool == HeroPoolMode.Favorites) return favorites.Contains(hero.Id);
             if (pool == HeroPoolMode.Common && !favorites.Contains(hero.Id) && IsRare(hero.Id)) return false;
             return true;
@@ -90,12 +94,15 @@ public sealed class RecommendationEngine
                 ? Math.Clamp(weightedEdge / possibleWeight * 45.0, -10.0, 10.0)
                 : 0;
 
-            var roleFit = RoleFit(hero, position);
+            var isStandard = PositionProfile.IsStandard(hero, position);
+            var roleFit = position is 4 or 5
+                ? (isStandard ? (position == 4 ? .80 : .82) : .12)
+                : RoleFit(hero, position);
             var favorite = favorites.Contains(hero.Id);
             double metaAdjustment = 0;
             double popularityAdjustment = 0;
-            string metaLabel = "Общий WR: недостаточно данных";
-            string popularityLabel = "Пики: недостаточно данных";
+            string metaLabel = "Общий WR (все роли): нет данных";
+            string popularityLabel = "Популярность (все роли): нет данных";
             var picks = heroPicks.GetValueOrDefault(hero.Id);
             bool rare = IsRare(hero.Id);
 
@@ -107,13 +114,13 @@ public sealed class RecommendationEngine
                     // Beta(100,100) smoothing; scale is intentionally modest.
                     var winRate = (w + 100.0) / (p + 200.0);
                     metaAdjustment = Math.Clamp((winRate - .5) * 40.0, -5.0, 5.0);
-                    metaLabel = $"Общий WR: {100.0 * w / p:F1}% ({p:N0} пиков)";
+                    metaLabel = $"Общий WR (все роли): {100.0 * w / p:F1}% ({p:N0} пиков)";
                 }
 
                 if (p > 0 && totalPicks > 0)
                 {
                     var pickRate = 1000.0 * p / totalPicks;
-                    popularityLabel = $"Частота выбора: ≈{pickRate:F1}% матчей";
+                    popularityLabel = $"Частота выбора (все роли): ≈{pickRate:F1}% матчей";
                 }
 
                 if (p > 0 && medianPicks > 0)
@@ -125,11 +132,15 @@ public sealed class RecommendationEngine
             var score = Math.Clamp(50 + roleAdjustment + matchupAdjustment
                 + metaAdjustment + popularityAdjustment + (favorite ? 4 : 0), 0, 100);
 
-            string roleLabel = roleFit >= .7
-                ? "Архетип подходит роли"
-                : roleFit >= .5
-                    ? "Архетип частично подходит роли"
-                    : "Позиция не подтверждена";
+            string roleLabel = position is 4 or 5
+                ? (isStandard
+                    ? "Поддержка: базовый список позиции, не данные текущего патча"
+                    : "НЕСТАНДАРТНЫЙ пик: позиция не подтверждена")
+                : roleFit >= .7
+                    ? "Архетип подходит роли (приблизительно)"
+                    : roleFit >= .5
+                        ? "Архетип частично подходит роли"
+                        : "Позиция не подтверждена";
             string evidence = pickedEnemies.Count == 0
                 ? "Матчапы: враги не выбраны"
                 : $"Матчапы: {measured}/{pickedEnemies.Count} противников";
@@ -142,7 +153,11 @@ public sealed class RecommendationEngine
                 MetaLabel = metaLabel,
                 PopularityLabel = popularityLabel,
                 EvidenceLabel = evidence,
-                IsRare = rare
+                IsRare = rare,
+                IsNonStandard = !isStandard,
+                PositionLabel = position is 4 or 5
+                    ? (isStandard ? "✓ Пул поддержки" : "⚠ Нестандартная роль")
+                    : "Роль оценена приблизительно"
             });
         }
 
