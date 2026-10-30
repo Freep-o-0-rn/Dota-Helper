@@ -147,4 +147,65 @@ Check(largo.PortraitUrl.EndsWith("/heroes/largo.png") &&
       kez.PortraitUrl.EndsWith("/heroes/kez.png"),
       "Original Valve hero art must remain available");
 
-Console.WriteLine("Dota Helper 0.5 real-position regression tests passed.");
+// STRATZ matchUp query returns WINS OF THE QUERIED ENEMY, not the candidate.
+// Invalid rows and duplicates must be handled conservatively.
+var stratzMatchupsJson = """
+{
+ "data": { "heroStats": { "matchUp": [
+    { "vs": [
+        {"heroId2":145,"matchCount":500,"winCount":100},
+        {"heroId2":119,"matchCount":500,"winCount":350},
+        {"heroId2":8001,"matchCount":100,"winCount":50},
+        {"heroId2":155,"matchCount":3,"winCount":2},
+        {"heroId2":145,"matchCount":300,"winCount":180}
+    ] }
+ ] } }
+}
+""";
+var rankCounters = StratzClient.ParseMatchups(stratzMatchupsJson, 8001);
+Check(rankCounters.Count == 2 &&
+      rankCounters.Single(x => x.HeroId == 145).GamesPlayed == 500 &&
+      rankCounters.Single(x => x.HeroId == 145).Wins == 100,
+    "STRATZ counter parser must keep largest sample and queried enemy wins");
+try
+{
+    StratzClient.ParseMatchups("""{"errors":[{"message":"invalid bracket"}],"data":null}""", 8001);
+    throw new Exception("STRATZ errors should never be treated as neutral games");
+}
+catch (JsonException) { }
+
+var fiveEnemySlots = Enumerable.Range(1, 5).Select(pos =>
+{
+    var hero = new Hero { Id = 8100 + pos, Name = "Enemy " + pos };
+    return new DraftSlot("Enemy " + pos)
+    {
+        SelectedHero = hero, EnemyPosition = pos, IsLaneOpponent = pos == 3
+    };
+}).ToArray();
+var fiveData = Enumerable.Range(1, 5).ToDictionary(pos => 8100 + pos,
+    pos => (IReadOnlyList<Matchup>)[new Matchup {
+        HeroId = 145, GamesPlayed = 500, Wins = pos <= 3 ? 100 : 300
+    }]);
+var fiveSources = Enumerable.Range(1, 5).ToDictionary(pos => 8100 + pos,
+    pos => pos <= 3 ? "STRATZ" : "OpenDota (резерв)");
+var allFiveCounters = engine.Rank([kez], [], fiveEnemySlots, 1,
+    new HashSet<int>(), fiveData, null, 0, HeroPoolMode.All, false, samples,
+    fiveSources)[0];
+Check(allFiveCounters.OpponentsMeasured == 5 &&
+      allFiveCounters.OpponentsTotal == 5 &&
+      allFiveCounters.CounterpickSummary.Contains("Enemy 1") &&
+      allFiveCounters.CounterpickSummary.Contains("Enemy 5") &&
+      allFiveCounters.CounterpickSummary.Contains("STRATZ") &&
+      allFiveCounters.CounterpickSummary.Contains("OpenDota"),
+    "Counters must cover all five enemies and disclose per-enemy source");
+Check(allFiveCounters.SampleGames == 2500,
+    "Sample sizes from each enemy must be accounted for");
+Check(allFiveCounters.CompactCounterpick.Contains("Контрпик"),
+    "Compact recommendation must include counter contribution");
+
+var oldOpenDota = engine.Rank([kez], [], fiveEnemySlots, 1,
+    new HashSet<int>(), fiveData, null, 0, HeroPoolMode.All, false, samples)[0];
+Check(Math.Abs(allFiveCounters.Score - oldOpenDota.Score) > .01,
+    "STRATZ counter evidence should use a rank baseline, unlike OpenDota fallback");
+
+Console.WriteLine("Dota Helper 0.6 full-team rank-specific counter tests passed.");
