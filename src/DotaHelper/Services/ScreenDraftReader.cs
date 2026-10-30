@@ -96,7 +96,7 @@ public static class PortraitRecognition
             var c=image.GetPixel(x,y);
             var high=Math.Max(c.R,Math.Max(c.G,c.B));
             var low=Math.Min(c.R,Math.Min(c.G,c.B));
-            if(high>70 && high-low>48 && (high-low)*100/Math.Max(1,high)>36)
+            if(high>70 && high-low>48 && (high-low)*100/Math.Max(1,(int)high)>36)
                 vivid++;
             total++;
         }
