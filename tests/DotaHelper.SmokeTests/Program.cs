@@ -252,4 +252,15 @@ var noPro = engine.Rank([metaCandidateA], [], [], 1, new HashSet<int>(),
 Check(noPro[0].MetaLabel.Contains("нет данных"),
     "Professional mode must never silently fall back to ranked statistics");
 
-Console.WriteLine("Dota Helper 0.4 core-priority and meta-mode tests passed.");
+// Original Valve artwork, not AI-generated images, including new heroes.
+var kez = new Hero { Id = 145, Name = "Kez", InternalName = "npc_dota_hero_kez" };
+var largo = new Hero { Id = 155, Name = "Largo", InternalName = "npc_dota_hero_largo" };
+Check(kez.PortraitUrl.EndsWith("/heroes/kez.png"), "Kez portrait URL must use Valve filename");
+Check(largo.PortraitUrl.EndsWith("/heroes/largo.png"), "Largo portrait URL must use Valve filename");
+Check(PositionProfile.IsStandard(kez, 1) && PositionProfile.IsStandard(largo, 5),
+    "Kez and Largo must be available for their supported roles");
+Check(new Hero { Id = 17, Name = "Test", InternalName = "npc_dota_hero_largo",
+    ImagePath = "/apps/dota2/images/dota_react/heroes/largo.png" }
+    .PortraitUrl.EndsWith("/heroes/largo.png"),
+    "OpenDota image metadata must be supported");
+Console.WriteLine("Dota Helper 0.4.1 hero artwork and new hero tests passed.");
