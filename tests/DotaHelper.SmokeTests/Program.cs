@@ -208,4 +208,22 @@ var oldOpenDota = engine.Rank([kez], [], fiveEnemySlots, 1,
 Check(Math.Abs(allFiveCounters.Score - oldOpenDota.Score) > .01,
     "STRATZ counter evidence should use a rank baseline, unlike OpenDota fallback");
 
-Console.WriteLine("Dota Helper 0.6 full-team rank-specific counter tests passed.");
+Check(StratzClient.NormalizeToken("  Bearer abc123  ") == "abc123",
+    "Bearer prefix copied into token must be removed");
+Check(StratzClient.NormalizeToken(" 'some-token' ") == "some-token",
+    "Quotes copied around token must be removed");
+Check(StratzClient.NormalizeToken("  ") == "",
+    "Empty secret must stay empty");
+Check(StratzClient.DescribeHttpError(System.Net.HttpStatusCode.Unauthorized,
+    "application/json", "{}").Contains("401"),
+    "HTTP 401 must be distinguished from Cloudflare");
+Check(StratzClient.DescribeHttpError(System.Net.HttpStatusCode.Forbidden,
+    "text/html", "Just a moment cf-chl").Contains("Cloudflare"),
+    "Cloudflare challenge must not blame token");
+Check(StratzClient.DescribeHttpError(System.Net.HttpStatusCode.Forbidden,
+    "application/json", "{}").Contains("403"),
+    "HTTP 403 without challenge must be classified separately");
+Check(StratzClient.DescribeHttpError((System.Net.HttpStatusCode)429,
+    "application/json", "{}").Contains("429"),
+    "Rate limiting must be explained");
+Console.WriteLine("Dota Helper 0.6.1 STRATZ authentication diagnostics passed.");
