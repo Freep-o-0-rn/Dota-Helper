@@ -41,31 +41,35 @@ public sealed class Matchup
 public sealed class HeroStats
 {
     [JsonPropertyName("id")] public int Id { get; set; }
-    [JsonPropertyName("1_pick")] public long Picks1 { get; set; }
-    [JsonPropertyName("1_win")] public long Wins1 { get; set; }
-    [JsonPropertyName("2_pick")] public long Picks2 { get; set; }
-    [JsonPropertyName("2_win")] public long Wins2 { get; set; }
-    [JsonPropertyName("3_pick")] public long Picks3 { get; set; }
-    [JsonPropertyName("3_win")] public long Wins3 { get; set; }
-    [JsonPropertyName("4_pick")] public long Picks4 { get; set; }
-    [JsonPropertyName("4_win")] public long Wins4 { get; set; }
-    [JsonPropertyName("5_pick")] public long Picks5 { get; set; }
-    [JsonPropertyName("5_win")] public long Wins5 { get; set; }
-    [JsonPropertyName("6_pick")] public long Picks6 { get; set; }
-    [JsonPropertyName("6_win")] public long Wins6 { get; set; }
-    [JsonPropertyName("7_pick")] public long Picks7 { get; set; }
-    [JsonPropertyName("7_win")] public long Wins7 { get; set; }
-    [JsonPropertyName("8_pick")] public long Picks8 { get; set; }
-    [JsonPropertyName("8_win")] public long Wins8 { get; set; }
+    [JsonPropertyName("hero_id")] public int HeroId { get; set; }
+    public int EffectiveId => Id > 0 ? Id : HeroId;
+    [JsonPropertyName("1_pick")] public long? Picks1 { get; set; }
+    [JsonPropertyName("1_win")] public long? Wins1 { get; set; }
+    [JsonPropertyName("2_pick")] public long? Picks2 { get; set; }
+    [JsonPropertyName("2_win")] public long? Wins2 { get; set; }
+    [JsonPropertyName("3_pick")] public long? Picks3 { get; set; }
+    [JsonPropertyName("3_win")] public long? Wins3 { get; set; }
+    [JsonPropertyName("4_pick")] public long? Picks4 { get; set; }
+    [JsonPropertyName("4_win")] public long? Wins4 { get; set; }
+    [JsonPropertyName("5_pick")] public long? Picks5 { get; set; }
+    [JsonPropertyName("5_win")] public long? Wins5 { get; set; }
+    [JsonPropertyName("6_pick")] public long? Picks6 { get; set; }
+    [JsonPropertyName("6_win")] public long? Wins6 { get; set; }
+    [JsonPropertyName("7_pick")] public long? Picks7 { get; set; }
+    [JsonPropertyName("7_win")] public long? Wins7 { get; set; }
+    [JsonPropertyName("8_pick")] public long? Picks8 { get; set; }
+    [JsonPropertyName("8_win")] public long? Wins8 { get; set; }
 
     public (long Picks, long Wins) InBracket(int bracket) => bracket switch
     {
-        1 => (Picks1, Wins1), 2 => (Picks2, Wins2),
-        3 => (Picks3, Wins3), 4 => (Picks4, Wins4),
-        5 => (Picks5, Wins5), 6 => (Picks6, Wins6),
-        7 => (Picks7, Wins7),
-        _ => (Picks1 + Picks2 + Picks3 + Picks4 + Picks5 + Picks6 + Picks7,
-              Wins1 + Wins2 + Wins3 + Wins4 + Wins5 + Wins6 + Wins7)
+        1 => (Picks1 ?? 0, Wins1 ?? 0), 2 => (Picks2 ?? 0, Wins2 ?? 0),
+        3 => (Picks3 ?? 0, Wins3 ?? 0), 4 => (Picks4 ?? 0, Wins4 ?? 0),
+        5 => (Picks5 ?? 0, Wins5 ?? 0), 6 => (Picks6 ?? 0, Wins6 ?? 0),
+        7 => (Picks7 ?? 0, Wins7 ?? 0),
+        _ => ((Picks1 ?? 0) + (Picks2 ?? 0) + (Picks3 ?? 0) +
+              (Picks4 ?? 0) + (Picks5 ?? 0) + (Picks6 ?? 0) + (Picks7 ?? 0),
+              (Wins1 ?? 0) + (Wins2 ?? 0) + (Wins3 ?? 0) +
+              (Wins4 ?? 0) + (Wins5 ?? 0) + (Wins6 ?? 0) + (Wins7 ?? 0))
     };
 }
 
