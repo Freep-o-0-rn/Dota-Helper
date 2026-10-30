@@ -8,9 +8,9 @@
     <Window.Resources>
         <SolidColorBrush x:Key="Panel" Color="#1B2330"/>
         <SolidColorBrush x:Key="Muted" Color="#A2ADBC"/>
-        <Style TargetType="TextBlock">
-            <Setter Property="Foreground" Value="#E5EAF2"/>
-        </Style>
+        <!-- TextBlock should inherit Foreground from the nearest control.
+             A global light Foreground style makes ComboBox dropdown items
+             almost invisible on the native white selection popup. -->
         <Style TargetType="ComboBox">
             <Setter Property="Background" Value="#2A3442"/>
             <Setter Property="Foreground" Value="#17202C"/>
