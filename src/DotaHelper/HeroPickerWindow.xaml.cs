@@ -1,80 +1,126 @@
+using System.ComponentModel;
+using System.Runtime.CompilerServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using DotaHelper.Models;
+using DotaHelper.Services;
 
 namespace DotaHelper;
 
+public sealed class HeroPickerTile : INotifyPropertyChanged
+{
+    private bool _isMatch = true;
+    public HeroPickerTile(Hero hero) => Hero = hero;
+    public Hero Hero { get; }
+    public bool IsMatch
+    {
+        get => _isMatch;
+        set
+        {
+            if (_isMatch == value) return;
+            _isMatch = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsMatch)));
+        }
+    }
+
+    public event PropertyChangedEventHandler? PropertyChanged;
+}
+
 public sealed record HeroAttributeGroup(string Label, string Glyph,
-    string Accent, IReadOnlyList<Hero> Heroes);
+    string Accent, IReadOnlyList<HeroPickerTile> Heroes);
 
 /// <summary>
-/// Compact four-column gallery with Valve hero portraits, ordered by attribute.
-/// Raw OpenDota primary_attr metadata is never inferred from a manual role list.
+/// Same-layout, Dota-like search: never removes or rearranges the portraits.
+/// As each letter is entered, nonmatching portraits become grey and unselectable.
 /// </summary>
 public partial class HeroPickerWindow : Window
 {
     private readonly IReadOnlyList<Hero> _heroes;
+    private readonly List<HeroAttributeGroup> _groups = [];
     public Hero? SelectedHero { get; private set; }
 
     public HeroPickerWindow(IEnumerable<Hero> heroes, string caption, Hero? selected = null)
     {
         InitializeComponent();
         Title = caption;
-        _heroes = heroes.OrderBy(h => h.Name, StringComparer.CurrentCultureIgnoreCase)
-            .ToList();
-        ApplyFilter();
+        _heroes = heroes.DistinctBy(h => h.Id)
+            .OrderBy(h => h.Name, StringComparer.CurrentCultureIgnoreCase).ToList();
+        _groups.AddRange(BuildGroups(_heroes));
+        GroupList.ItemsSource = _groups;
+        ApplySearch();
         Loaded += (_, _) => SearchBox.Focus();
     }
 
-    public static IReadOnlyList<HeroAttributeGroup> GroupHeroes(
-        IEnumerable<Hero> heroes, string query = "")
+    private static IReadOnlyList<HeroAttributeGroup> BuildGroups(
+        IReadOnlyList<Hero> heroes)
     {
-        var filtered = heroes.Where(h =>
-            string.IsNullOrWhiteSpace(query) ||
-            h.Name.Contains(query, StringComparison.OrdinalIgnoreCase) ||
-            h.InternalName.Contains(query, StringComparison.OrdinalIgnoreCase))
-            .OrderBy(h => h.Name, StringComparer.CurrentCultureIgnoreCase).ToList();
-
-        var known = new (string Attr, string Label, string Glyph, string Accent)[]
+        var known = new (string Attribute, string Label, string Glyph, string Accent)[]
         {
             ("str", "СИЛА", "◉", "#D66249"),
             ("agi", "ЛОВКОСТЬ", "◉", "#55C881"),
             ("int", "ИНТЕЛЛЕКТ", "◉", "#53C3DA"),
             ("all", "УНИВЕРСАЛЬНЫЕ", "◉", "#C6A26D"),
         };
-        var groups = known.Select(x => new HeroAttributeGroup(x.Label, x.Glyph, x.Accent,
-            filtered.Where(h => string.Equals(h.PrimaryAttribute, x.Attr,
-                StringComparison.OrdinalIgnoreCase)).ToList())).ToList();
-        var unknown = filtered.Where(h => !known.Any(x =>
-            string.Equals(x.Attr, h.PrimaryAttribute, StringComparison.OrdinalIgnoreCase)))
-            .ToList();
-        if (unknown.Count > 0)
-            groups.Add(new HeroAttributeGroup("БЕЗ ДАННЫХ", "?", "#92A0B0", unknown));
+        var groups = known.Select(x => new HeroAttributeGroup(
+            x.Label, x.Glyph, x.Accent,
+            heroes.Where(h => string.Equals(h.PrimaryAttribute, x.Attribute,
+                StringComparison.OrdinalIgnoreCase))
+                .Select(h => new HeroPickerTile(h)).ToArray())).ToList();
+
+        var unclassified = heroes.Where(h => !known.Any(x =>
+            string.Equals(x.Attribute, h.PrimaryAttribute, StringComparison.OrdinalIgnoreCase)))
+            .Select(h => new HeroPickerTile(h)).ToArray();
+        if (unclassified.Length > 0)
+            groups.Add(new HeroAttributeGroup("БЕЗ ДАННЫХ", "?", "#92A0B0", unclassified));
+
         return groups;
     }
 
-    private void ApplyFilter()
+    private int ApplySearch()
     {
-        var matches = GroupHeroes(_heroes, SearchBox.Text.Trim());
-        GroupList.ItemsSource = matches;
-        CounterLabel.Text = $"{matches.Sum(x => x.Heroes.Count)} героев";
+        var query = SearchBox.Text;
+        var matches = 0;
+        foreach (var tile in _groups.SelectMany(group => group.Heroes))
+        {
+            tile.IsMatch = HeroSearch.Matches(tile.Hero, query);
+            if (tile.IsMatch) matches++;
+        }
+        CounterLabel.Text = string.IsNullOrWhiteSpace(query)
+            ? $"{_heroes.Count} героев"
+            : $"Совпадений: {matches} из {_heroes.Count}";
+        return matches;
     }
 
-    private void SearchBox_TextChanged(object sender, TextChangedEventArgs e) => ApplyFilter();
+    private void SearchBox_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (_groups.Count > 0) ApplySearch();
+    }
 
     private void Hero_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is not Button { Tag: Hero hero }) return;
-        SelectedHero = hero;
+        if (sender is not Button { Tag: HeroPickerTile { IsMatch: true } tile })
+            return;
+        SelectedHero = tile.Hero;
         DialogResult = true;
     }
 
     private void Cancel_Click(object sender, RoutedEventArgs e) => DialogResult = false;
+
     private void Clear_Click(object sender, RoutedEventArgs e)
     {
         SelectedHero = null;
         DialogResult = true;
+    }
+
+    private void Window_PreviewTextInput(object sender, TextCompositionEventArgs e)
+    {
+        // Typing works even if a portrait/button currently owns keyboard focus.
+        if (SearchBox.IsKeyboardFocusWithin || string.IsNullOrEmpty(e.Text)) return;
+        SearchBox.Focus();
+        SearchBox.Text += e.Text;
+        SearchBox.CaretIndex = SearchBox.Text.Length;
+        e.Handled = true;
     }
 
     private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
@@ -83,6 +129,24 @@ public partial class HeroPickerWindow : Window
         {
             DialogResult = false;
             e.Handled = true;
+            return;
         }
+
+        if (e.Key == Key.Back && !SearchBox.IsKeyboardFocusWithin &&
+            SearchBox.Text.Length > 0)
+        {
+            SearchBox.Text = SearchBox.Text[..^1];
+            SearchBox.Focus();
+            SearchBox.CaretIndex = SearchBox.Text.Length;
+            e.Handled = true;
+            return;
+        }
+
+        if (e.Key != Key.Enter || string.IsNullOrWhiteSpace(SearchBox.Text)) return;
+        var matches = _groups.SelectMany(x => x.Heroes).Where(t => t.IsMatch).ToArray();
+        if (matches.Length != 1) return;
+        SelectedHero = matches[0].Hero;
+        DialogResult = true;
+        e.Handled = true;
     }
 }
