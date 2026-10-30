@@ -1,7 +1,7 @@
 <Window x:Class="DotaHelper.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Dota Helper — Draft Assistant 0.6" Height="830" Width="1420"
+        Title="Dota Helper — Draft Assistant 0.6.1" Height="830" Width="1420"
         MinWidth="1120" MinHeight="670"
         Background="#10141D" Foreground="#E5EAF2"
         FontFamily="Segoe UI" Loaded="Window_Loaded">
@@ -60,7 +60,7 @@
                 <StackPanel>
                     <TextBlock Text="DOTA HELPER" FontSize="23" FontWeight="Bold"
                                Foreground="#D9B36F"/>
-                    <TextBlock Text="DRAFT ASSISTANT • ПРОТОТИП 0.6"
+                    <TextBlock Text="DRAFT ASSISTANT • ПРОТОТИП 0.6.1"
                                FontSize="11" Foreground="#A2ADBC"/>
                 </StackPanel>
             </DockPanel>
@@ -104,6 +104,9 @@
                                Foreground="#D9B36F" Margin="0,17,0,4"/>
                     <ComboBox IsEditable="False" ItemsSource="{Binding PoolOptions}"
                               SelectedItem="{Binding SelectedPool, Mode=TwoWay}"/>
+                    <Button Content="Проверить STRATZ API" Click="CheckStratz_Click"
+                            ToolTip="Проверяет авторизацию минимальным запросом и показывает HTTP-код, не раскрывая токен"
+                            Background="#395A72" Margin="0,4,0,3" FontSize="12"/>
                     <TextBlock Text="«По ролям»: реальные позиции STRATZ. Нужен токен STRATZ_API_TOKEN. Эксперимент показывает всех."
                                Foreground="#A2ADBC" FontSize="11"
                                TextWrapping="Wrap" Margin="0,7,0,0"/>
