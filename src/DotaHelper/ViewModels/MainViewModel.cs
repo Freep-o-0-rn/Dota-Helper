@@ -37,9 +37,10 @@ public sealed class MainViewModel : INotifyPropertyChanged
     ];
     public IReadOnlyList<PoolOption> PoolOptions { get; } =
     [
-        new(HeroPoolMode.Common, "Без редких (25%)"),
-        new(HeroPoolMode.All, "Все герои"),
-        new(HeroPoolMode.Favorites, "Только избранные")
+        new(HeroPoolMode.Common, "Стандартные, без редких"),
+        new(HeroPoolMode.All, "Все подходящие для роли"),
+        new(HeroPoolMode.Favorites, "Подходящие избранные"),
+        new(HeroPoolMode.Experimental, "Эксперимент: все герои")
     ];
 
     public MainViewModel()
@@ -187,11 +188,18 @@ public sealed class MainViewModel : INotifyPropertyChanged
             : null;
 
         var unavailable = results.Count(r => r.Error);
+        if (Recommendations.Count == 0)
+        {
+            Status = SelectedPool?.Mode == HeroPoolMode.Favorites
+                ? "Нет подходящих избранных героев. Измени пул или отметь своих героев."
+                : "Нет подходящих героев с выбранными настройками.";
+            return;
+        }
         Status = !_statsAvailable
             ? "Внимание: /heroStats недоступен. Популярность и общий WR отсутствуют; оценки предварительные."
             : unavailable > 0
                 ? $"Недоступны матчапы для {unavailable} врагов. Показаны частичные данные."
-                : "0.2: выборка OpenDota, НЕ шанс победы. Позиции приблизительные, патч и синергии не учтены.";
+                : "0.2.1: позиции 4/5 — ручной список. Общий WR по всем ролям. Текущий патч не учтён.";
     }
 
     private async Task SavePreferencesAsync()
