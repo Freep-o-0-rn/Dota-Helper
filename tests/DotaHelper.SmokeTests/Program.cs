@@ -635,7 +635,7 @@ using (var top=new System.Drawing.Bitmap(1280,720))
         for(int yy=12;yy<57;yy+=3)
         for(int xx=x;xx<x+77;xx+=3)
         {
-            var color=(i+xx/3+yy/3)%3 switch
+            var color=((i+xx/3+yy/3)%3) switch
             {
                 0=>System.Drawing.Brushes.CornflowerBlue,
                 1=>System.Drawing.Brushes.OrangeRed,
