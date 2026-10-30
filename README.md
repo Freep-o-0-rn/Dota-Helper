@@ -7,7 +7,7 @@ Windows-приложение C# / .NET 10 / WPF. Рекомендует геро
 - **Оригинальные портреты Dota 2** (Steam CDN): в списке рекомендаций, обоих раскрывающихся списках драфта и рядом с выбранными союзниками/врагами. Если картинка недоступна, выбор героя продолжает работать.
 - Две опции пула: **По ролям** и **Эксперимент**. Ручные списки ролей удалены в 0.5.
 - **STRATZ**: группировка реальных матчей по позициям 1–5 и выбранной группе рейтингов из двух соседних медалей. Для обычного режима базовый WR героя берётся на выбранной позиции; профессиональный режим показывает общий WR по pro-матчам OpenDota, а роли по высокорейтинговому STRATZ.
-- **Контрпики**: STRATZ \`heroStats.matchUp\` по соответствующей группе рейтингов (если доступны) вместо общих матчапов OpenDota. Данные о противниках на линии не требуют игнорировать остальных врагов. Важнее враги 1–3 позиции (вес 1.7 против 1.0 саппортов), пометка на своей линии даёт дополнительный множитель ×1.25.
+- **Контрпики**: STRATZ `heroStats.matchUp` по соответствующей группе рейтингов (если доступны) вместо общих матчапов OpenDota. Данные о противниках на линии не требуют игнорировать остальных врагов. Важнее враги 1–3 позиции (вес 1.7 против 1.0 саппортов), пометка на своей линии даёт дополнительный множитель ×1.25.
 - Каждая рекомендация показывает вклад всех известных матчапов и отдельно сообщает **источник**, число игр и условный вклад в рейтинг. Когда STRATZ недоступен, используется **помеченный как резервный OpenDota**; если матчапов нет, влияние нейтральное, данные не выдумываются.
 - Два источника могут использовать различные выборки. STRATZ сравнивает матчап с общей базой винрейта героя в той же рейтинговой группе; OpenDota использует нейтральную базу 50%, что является приблизительным подходом.
 - Общий балл 0–100 **НЕ** является вероятностью победы.
@@ -25,16 +25,18 @@ Windows-приложение C# / .NET 10 / WPF. Рекомендует геро
 
 Открой PowerShell **в каталоге проекта**:
 
-\`\`\`powershell
-$env:STRATZ_API_TOKEN = Read-Host "Введи токен STRATZ"
+```powershell
+$secure = Read-Host "Токен STRATZ" -AsSecureString
+$env:STRATZ_API_TOKEN = [System.Net.NetworkCredential]::new("", $secure).Password
+Remove-Variable secure
 dotnet run --project .\src\DotaHelper\DotaHelper.csproj
-\`\`\`
+```
 
 Программа считывает токен только из переменной окружения, не пишет его в файлы и не отображает. **Не публикуй токен в GitHub, скриншотах и чате.**
 
 ### Обновление — новая числовая папка
 
-\`\`\`powershell
+```powershell
 $root = "E:\Work\Dota Helper"
 New-Item -ItemType Directory -Force -Path $root | Out-Null
 $nums = @(Get-ChildItem $root -Directory | Where-Object { $_.Name -match '^\d+$' } | ForEach-Object { [int]$_.Name })
@@ -42,12 +44,14 @@ $n = if ($nums.Count) { ($nums | Measure-Object -Maximum).Maximum + 1 } else { 1
 $folder = Join-Path $root "$n\Dota-Helper"
 git clone https://github.com/Freep-o-0-rn/Dota-Helper.git $folder
 Set-Location $folder
-$env:STRATZ_API_TOKEN = Read-Host "Введи токен STRATZ"
+$secure = Read-Host "Токен STRATZ" -AsSecureString
+$env:STRATZ_API_TOKEN = [System.Net.NetworkCredential]::new("", $secure).Password
+Remove-Variable secure
 dotnet run --project .\src\DotaHelper\DotaHelper.csproj
-\`\`\`
+```
 
 Автоматические тесты:
-\`dotnet run --project tests/DotaHelper.SmokeTests/DotaHelper.SmokeTests.csproj\`
+`dotnet run --project tests/DotaHelper.SmokeTests/DotaHelper.SmokeTests.csproj`
 
 Windows EXE: GitHub Actions → успешная сборка → Artifacts → **DotaHelper-0.6-win-x64**.
 
@@ -59,4 +63,4 @@ Windows EXE: GitHub Actions → успешная сборка → Artifacts → 
 4. Выключи токен и проверь, что при наличии кэша он используется с предупреждением, а без кэша приложение явно говорит об отсутствии данных.
 5. Проверь оригинальные изображения в драфте и рекомендациях (в том числе Largo и Kez).
 
-Следующие задачи: фильтр текущего патча с проверкой схемы STRATZ; Steam-ссылка \`/id/vanity\`; статистика синергий союзников; сравнение точности на независимых матчах.
+Следующие задачи: фильтр текущего патча с проверкой схемы STRATZ; Steam-ссылка `/id/vanity`; статистика синергий союзников; сравнение точности на независимых матчах.
