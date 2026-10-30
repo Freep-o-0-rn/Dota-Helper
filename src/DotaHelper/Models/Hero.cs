@@ -100,10 +100,13 @@ public sealed class HeroStats
         3 => (Picks3 ?? 0, Wins3 ?? 0), 4 => (Picks4 ?? 0, Wins4 ?? 0),
         5 => (Picks5 ?? 0, Wins5 ?? 0), 6 => (Picks6 ?? 0, Wins6 ?? 0),
         7 => (Picks7 ?? 0, Wins7 ?? 0),
+        8 => (Picks8 ?? 0, Wins8 ?? 0),
         _ => ((Picks1 ?? 0) + (Picks2 ?? 0) + (Picks3 ?? 0) +
-              (Picks4 ?? 0) + (Picks5 ?? 0) + (Picks6 ?? 0) + (Picks7 ?? 0),
+              (Picks4 ?? 0) + (Picks5 ?? 0) + (Picks6 ?? 0) +
+              (Picks7 ?? 0) + (Picks8 ?? 0),
               (Wins1 ?? 0) + (Wins2 ?? 0) + (Wins3 ?? 0) +
-              (Wins4 ?? 0) + (Wins5 ?? 0) + (Wins6 ?? 0) + (Wins7 ?? 0))
+              (Wins4 ?? 0) + (Wins5 ?? 0) + (Wins6 ?? 0) +
+              (Wins7 ?? 0) + (Wins8 ?? 0))
     };
 }
 
