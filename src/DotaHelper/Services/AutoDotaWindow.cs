@@ -67,6 +67,42 @@ public static class AutoDotaWindow
 /// </summary>
 public static class AutoDraftLayout
 {
+    /// <summary>
+    /// Detect a dense visible portrait gallery without assuming a specific
+    /// hero grouping (attributes, roles, custom layout).
+    /// Blocks screenshots of strategy/item/map screens from creating fake bans.
+    /// The gallery tends to occupy a substantial part of the screen and
+    /// consists of repeated textured, colored cells.
+    /// </summary>
+    public static bool HasVisibleHeroGrid(Bitmap screen)
+    {
+        var w=screen.Width;var h=screen.Height;
+        if(w<800 || h<480) return false;
+        int x0=(int)(w*.03),x1=(int)(w*.97);
+        int y0=(int)(h*.14),y1=(int)(h*.78);
+        int step=Math.Clamp(w/52,22,34),samples=0,rich=0;
+        for(int cy=y0;cy+step<y1;cy+=step)
+        for(int cx=x0;cx+step<x1;cx+=step)
+        {
+            double sum=0,sum2=0;int colored=0,n=0;
+            for(int y=cy+2;y<cy+step;y+=4)
+            for(int x=cx+2;x<cx+step;x+=4)
+            {
+                var c=screen.GetPixel(x,y);
+                double brightness=Math.Max(c.R,Math.Max(c.G,c.B));
+                sum+=brightness;sum2+=brightness*brightness;
+                var lo=Math.Min(c.R,Math.Min(c.G,c.B));
+                if(brightness>70 && brightness-lo>50) colored++;
+                n++;
+            }
+            if(n==0)continue;
+            var variance=Math.Sqrt(Math.Max(0,sum2/n-sum*sum/(n*n)));
+            if(variance>37 && colored/(double)n>.13)rich++;
+            samples++;
+        }
+        return samples>60 && rich/(double)samples>.31;
+    }
+
     public static (ScreenArea Radiant, ScreenArea Dire, ScreenArea Bans)? Locate(Bitmap screen)
     {
         var w=screen.Width; var h=screen.Height;
