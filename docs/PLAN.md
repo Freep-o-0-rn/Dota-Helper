@@ -4,6 +4,15 @@
 
 Dota drafting assistant first, tactical observer later. Never read hidden game memory or automate gameplay.
 
+## 0.4.1 — portrait cards, roster freshness, Titan (implemented)
+
+- Compact recommendation rows with original hero portraits fetched from official Steam CDN (OpenDota image metadata preferred).
+- The full score explanation is now available in a separate expandable detail area; no details are lost.
+- Valve official /datafeed/herolist supplements OpenDota /heroes; catalog TTL 24 hours, so missing newest hero definitions do not silently remove playable heroes.
+- Largo support and Kez carry recognized by provisional position profiles.
+- Immortal (Titan) is displayed as a discrete rank and uses only its own 8_pick/8_win if available; missing data remains missing.
+- Steam vanity (/id/) resolution is a planned follow-up, not silently supported.
+
 ## 0.4 — full enemy team priority (implemented)
 
 - Enemy role in each slot is manually selected (0 unknown; 1 carry; 2 mid; 3 offlane; 4/5 support).
