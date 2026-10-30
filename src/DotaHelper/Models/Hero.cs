@@ -224,6 +224,7 @@ public sealed record Recommendation(
     public string MetaLabel { get; init; } = "Общий WR: нет данных";
     public string PopularityLabel { get; init; } = "Популярность: нет данных";
     public string EvidenceLabel { get; init; } = "Матчапы: нет данных";
+    public string ReliabilityLabel { get; init; } = "Достоверность: нет данных";
     public bool IsRare { get; init; }
     public bool IsNonStandard { get; init; }
     public string PositionLabel { get; init; } = "";
