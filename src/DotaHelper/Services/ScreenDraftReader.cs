@@ -419,7 +419,7 @@ public sealed class ScreenDraftReader : IDisposable
         // Strategy screens include red map/ability art. Never scan them as bans.
         // Supports hero galleries grouped by roles, attributes or other layouts.
         var hasGallery=AutoDraftLayout.HasVisibleHeroGrid(screen);
-        var candidates=hasGallery ?
+        IReadOnlyList<Rectangle> candidates=hasGallery ?
             PortraitRecognition.FindRedBanSlashes(screen,banArea) : [];
         foreach(var slash in candidates)
         {
