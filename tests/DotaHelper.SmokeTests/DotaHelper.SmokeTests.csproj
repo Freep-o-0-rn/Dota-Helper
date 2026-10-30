@@ -13,5 +13,6 @@
     <Compile Include="../../src/DotaHelper/Models/PositionStats.cs" Link="PositionStats.cs" />
     <Compile Include="../../src/DotaHelper/Services/StratzClient.cs" Link="StratzClient.cs" />
     <Compile Include="../../src/DotaHelper/Services/SteamProfileResolver.cs" Link="SteamProfileResolver.cs" />
+    <Compile Include="../../src/DotaHelper/Services/PatchInfoClient.cs" Link="PatchInfoClient.cs" />
   </ItemGroup>
 </Project>
