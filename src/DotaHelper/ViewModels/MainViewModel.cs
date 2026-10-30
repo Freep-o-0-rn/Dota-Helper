@@ -312,24 +312,51 @@ public sealed class MainViewModel : INotifyPropertyChanged
         var selectedEnemies = Enemies.Where(s => s.SelectedHero is not null)
             .Select(s => s.SelectedHero!.Id).Distinct().ToList();
 
-        Status = "Расчёт рекомендаций...";
-        var results = await Task.WhenAll(selectedEnemies.Select(async enemyId =>
-        {
-            try { return (Id: enemyId, Data: await _api.GetMatchupsAsync(enemyId), Error: false); }
-            catch { return (Id: enemyId, Data: (IReadOnlyList<Matchup>)[], Error: true); }
-        }));
-        if (revision != _revision) return;
+        Status = "Получение позиций и матчапов по выбранному рангу...";
 
+        var rank = SelectedRank?.Id ?? 0;
+        var professional = SelectedMeta?.Mode == MetaMode.Professional;
+
+        // Query position data in parallel with enemy counter data; each source
+        // caches by bracket. On STRATZ failure, OpenDota is a labelled fallback.
+        var positionTask = _positions.GetPositionSamplesAsync(
+            Heroes.ToList(), rank, professional);
+        var counterTasks = selectedEnemies.Select(async enemyId =>
+        {
+            try
+            {
+                var (data, stale) = await _positions.GetMatchupsAsync(
+                    enemyId, rank, professional);
+                return (Id: enemyId, Data: data,
+                    Origin: stale ? "STRATZ-кэш" : "STRATZ", Error: false);
+            }
+            catch
+            {
+                try
+                {
+                    var data = await _api.GetMatchupsAsync(enemyId);
+                    return (Id: enemyId, Data: data,
+                        Origin: "OpenDota (резерв)", Error: false);
+                }
+                catch
+                {
+                    return (Id: enemyId, Data: (IReadOnlyList<Matchup>)[],
+                        Origin: "Недоступно", Error: true);
+                }
+            }
+        }).ToArray();
+        var results = await Task.WhenAll(counterTasks);
+        if (revision != _revision) return;
         var matchups = results.Where(r => !r.Error)
             .ToDictionary(r => r.Id, r => r.Data);
+        var matchupSources = results.Where(r => !r.Error)
+            .ToDictionary(r => r.Id, r => r.Origin);
 
         PositionSnapshot? observed = null;
         string? positionError = null;
         try
         {
-            observed = await _positions.GetPositionSamplesAsync(
-                Heroes.ToList(), SelectedRank?.Id ?? 0,
-                SelectedMeta?.Mode == MetaMode.Professional);
+            observed = await positionTask;
         }
         catch (Exception ex)
         {
@@ -343,7 +370,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             _preferences.FavoriteHeroIds, matchups, _heroStats,
             SelectedRank?.Id ?? 0, SelectedPool?.Mode ?? HeroPoolMode.All,
             SelectedMeta?.Mode == MetaMode.Professional,
-            observed?.ByHero);
+            observed?.ByHero, matchupSources);
 
         Recommendations.Clear();
         foreach (var item in ranked) Recommendations.Add(item);
@@ -371,11 +398,13 @@ public sealed class MainViewModel : INotifyPropertyChanged
             return;
         }
         var info = observed?.Description ?? "Нет позиционной статистики";
-        var warn = observed?.IsStale == true ? " [КЭШ УСТАРЕЛ]" : "";
-        Status = $"{info}{warn}. " +
-            (unavailable > 0 ? $"Частичные матчапы ({unavailable} недоступно). " : "") +
-            (!_statsAvailable || !baselinePresent ? "Общий WR недоступен. " : "") +
-            "Контрпики всей команды: OpenDota лиги; патч не отфильтрован.";
+        var sources = selectedEnemies.Count == 0 ? "Врагов нет"
+            : $"Контрпики: STRATZ {results.Count(r => r.Origin.StartsWith("STRATZ"))}" +
+              $", OpenDota {results.Count(r => r.Origin.StartsWith("OpenDota"))}";
+        Status = $"{info}. {sources}. " +
+            (unavailable > 0 ? $"Неизвестные матчапы: {unavailable}. " : "") +
+            (!_statsAvailable || !baselinePresent ? "Общая мета недоступна. " : "") +
+            "Роли и матчапы сгруппированы по рангу; фильтр текущего патча не применяется.";
     }
 
     private async Task SavePreferencesAsync()
