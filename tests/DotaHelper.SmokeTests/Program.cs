@@ -492,3 +492,71 @@ Check(HeroSearch.MatchingIds(testRoster, "").Count == testRoster.Length,
     "Empty search highlights all portraits");
 
 Console.WriteLine("Dota Helper 0.9.2 portrait dimensions and keyboard-fallback tests passed.");
+
+
+// 0.10 — Valve GSI parser and conservative live-draft merge tests.
+var liveJson = """
+{
+  "map": {"game_state": "DOTA_GAMERULES_STATE_HERO_SELECTION", "matchid": 7654321},
+  "player": {"team_name": "radiant"},
+  "hero": {"name": "npc_dota_hero_witch_doctor"},
+  "draft": {
+    "team2": {
+      "pick0_id": 30, "pick1_id": 104, "ban0_id": 1,
+      "pick2_id": -1, "pick3_class": 22
+    },
+    "team3": {
+      "pick0_id": 2, "pick1_id": 104, "ban0_id": 79
+    }
+  }
+}
+""";
+var live = GsiDraftParser.Parse(liveJson);
+Check(live.MatchId == 7654321 &&
+      live.PlayerRadiant == true &&
+      live.RadiantPicks.SequenceEqual([30, 104]) &&
+      live.DirePicks.SequenceEqual([2, 104]) &&
+      live.RadiantBans.SequenceEqual([1]) &&
+      live.DireBans.SequenceEqual([79]) &&
+      live.OwnHeroName == "npc_dota_hero_witch_doctor",
+    "GSI must parse ranked team2/team3 pick and ban IDs without inventing hidden heroes");
+var noDraft = GsiDraftParser.Parse("""
+{"map":{"game_state":"DOTA_GAMERULES_STATE_HERO_SELECTION"},
+ "player":{"team_name":"dire"}, "hero":{"name":"npc_dota_hero_riki"}}
+""");
+Check(!noDraft.HasDraft && noDraft.DirePicks.Count == 0 &&
+      noDraft.PlayerRadiant == false,
+    "All Pick GSI without draft fields must remain empty, not fabricated");
+
+var liveHeroes = new Dictionary<int, Hero>
+{
+    [30] = wd, [104] = legion, [2] = voidHero, [1] = antiMageHero, [79] = shadowDemon
+};
+var liveAllies = Enumerable.Range(0, 4)
+    .Select(n => new DraftSlot("A" + n)).ToList();
+var liveEnemies = Enumerable.Range(0, 5)
+    .Select(n => new DraftSlot("E" + n, isEnemy: true)).ToList();
+liveAllies[0].SelectedHero = legion; // explicitly manually chosen
+var synced = GsiDraftApplier.MergePicks(live.RadiantPicks,
+    liveAllies, liveHeroes, excludeHeroId: 30);
+Check(synced == 0 && liveAllies[0].SelectedHero?.Id == 104,
+    "Own hero must be skipped, manual ally never overwritten");
+synced = GsiDraftApplier.MergePicks(live.DirePicks, liveEnemies, liveHeroes);
+Check(synced == 2 && liveEnemies[0].SelectedHero?.Id == 2 &&
+      liveEnemies[1].SelectedHero?.Id == 104,
+    "Only actually observed enemy picks are added into empty slots");
+synced = GsiDraftApplier.MergePicks(live.DirePicks, liveEnemies, liveHeroes);
+Check(synced == 0, "Repeated GSI packets must not duplicate picks or trigger recalc");
+synced = GsiDraftApplier.MergePicks(noDraft.DirePicks, liveEnemies, liveHeroes);
+Check(synced == 0 && liveEnemies[0].SelectedHero?.Id == 2,
+    "Empty/partial GSI updates must never clear visible manual or known picks");
+var matchBans = Enumerable.Range(1, 18).Select(n => new BanSlot(n)).ToList();
+var seenBans = GsiDraftApplier.MergeBans(
+    live.RadiantBans.Concat(live.DireBans), matchBans, liveHeroes);
+Check(seenBans == 2 && matchBans[0].SelectedHero?.Id == 1 &&
+      matchBans[1].SelectedHero?.Id == 79,
+    "Known All Pick bans from both teams must be merged without duplicates");
+Check(GsiDraftApplier.MergeBans(
+    [1, 1, 79], matchBans, liveHeroes) == 0,
+    "Repeated ban IDs must not create multiple ban tiles");
+Console.WriteLine("Dota Helper 0.10 local GSI parsing and live-draft merge tests passed.");
