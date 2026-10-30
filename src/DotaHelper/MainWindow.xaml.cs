@@ -6,6 +6,7 @@ using DotaHelper.ViewModels;
 using DotaHelper.Services;
 using Microsoft.Win32;
 using System.Net.Http;
+using System.IO;
 
 namespace DotaHelper;
 
