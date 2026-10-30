@@ -12,6 +12,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private readonly OpenDotaClient _api = new();
     private readonly RecommendationEngine _engine = new();
     private readonly PreferencesStore _store = new();
+    private readonly SemaphoreSlim _saveGate = new(1, 1);
     private UserPreferences _preferences = new();
     private IReadOnlyDictionary<int, HeroStats> _heroStats = new Dictionary<int, HeroStats>();
     private bool _statsAvailable;
@@ -345,14 +346,24 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     private async Task SavePreferencesAsync()
     {
-        _preferences.SelectedPosition = SelectedPosition;
-        _preferences.SelectedRankBracket = SelectedRank?.Id ?? 0;
-        _preferences.SelectedPoolMode = (int)(SelectedPool?.Mode ?? HeroPoolMode.All);
-        _preferences.MetaMode = (int)(SelectedMeta?.Mode ?? MetaMode.PlayerRank);
-        try { await _store.SaveAsync(_preferences); }
+        // Multiple selection changes can arrive almost simultaneously.
+        // Serialize writes to prevent conflicting preferences.json.tmp moves.
+        await _saveGate.WaitAsync();
+        try
+        {
+            _preferences.SelectedPosition = SelectedPosition;
+            _preferences.SelectedRankBracket = SelectedRank?.Id ?? 0;
+            _preferences.SelectedPoolMode = (int)(SelectedPool?.Mode ?? HeroPoolMode.All);
+            _preferences.MetaMode = (int)(SelectedMeta?.Mode ?? MetaMode.PlayerRank);
+            await _store.SaveAsync(_preferences);
+        }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             Status = $"Не удалось сохранить настройки: {ex.Message}";
+        }
+        finally
+        {
+            _saveGate.Release();
         }
     }
 
