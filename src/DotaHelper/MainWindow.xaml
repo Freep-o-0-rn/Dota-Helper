@@ -1,7 +1,7 @@
 <Window x:Class="DotaHelper.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Dota Helper — Draft Assistant 0.12"
+        Title="Dota Helper — Draft Assistant 0.12.1"
         Width="1520" Height="850" MinWidth="1120" MinHeight="690"
         Background="#101722" Foreground="#E9F0F5" FontFamily="Segoe UI"
         Loaded="Window_Loaded">
@@ -368,7 +368,7 @@
                     <TextBlock Text="DOTA HELPER" FontSize="21" FontWeight="Bold"
                                Foreground="#E0B76F"/>
                     <DockPanel>
-                        <TextBlock Text="DRAFT ASSISTANT · 0.12" FontSize="10"
+                        <TextBlock Text="DRAFT ASSISTANT · 0.12.1" FontSize="10"
                                    Foreground="#9AAEBF" Margin="0,0,15,0"/>
                         <TextBlock Text="{Binding PatchDisplay}" FontSize="10"
                                    Foreground="#80CDB7"/>
