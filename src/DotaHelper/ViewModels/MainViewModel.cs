@@ -52,6 +52,10 @@ public sealed class MainViewModel : INotifyPropertyChanged
     }
 
     public string ResultsLabel => $"Показано {VisibleRecommendations.Count} из {Recommendations.Count} подходящих героев";
+    public string AlliesSummary => $"{Allies.Count(s => s.SelectedHero is not null)}/4";
+    public string EnemiesSummary => $"{Enemies.Count(s => s.SelectedHero is not null)}/5";
+
+    public void ClearRecommendationSearch() => HeroSearchText = "";
 
     private void ApplyRecommendationSearch()
     {
@@ -174,7 +178,12 @@ public sealed class MainViewModel : INotifyPropertyChanged
         for (var i = 1; i <= 4; i++) Allies.Add(new DraftSlot($"Союзник {i}"));
         for (var i = 1; i <= 5; i++) Enemies.Add(new DraftSlot($"Противник {i}"));
         foreach (var slot in Allies.Concat(Enemies))
-            slot.Changed += (_, _) => DraftChanged?.Invoke(this, EventArgs.Empty);
+            slot.Changed += (_, _) =>
+            {
+                OnPropertyChanged(nameof(AlliesSummary));
+                OnPropertyChanged(nameof(EnemiesSummary));
+                DraftChanged?.Invoke(this, EventArgs.Empty);
+            };
         _selectedRank = RankOptions[0];
         _selectedPool = PoolOptions[0];
         _selectedMeta = MetaOptions[0];
@@ -304,6 +313,13 @@ public sealed class MainViewModel : INotifyPropertyChanged
         slot.SelectedHero = null;
         slot.IsLaneOpponent = false;
         slot.EnemyPosition = 0;
+    }
+
+    public void ClearDraft()
+    {
+        // The existing UI debounce coalesces the slot-change events.
+        foreach (var slot in Allies.Concat(Enemies))
+            ClearSlot(slot);
     }
 
     public async Task ToggleFavoriteAsync()
