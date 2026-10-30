@@ -356,6 +356,8 @@ public partial class MainWindow : Window
                 $"{dire.Count(h=>h is not null)}, препиков " +
                 $"{frame.RadiantPrePicks+frame.DirePrePicks}, " +
                 $"банов {bans.Length}" +
+                $"; сетка {(frame.HasHeroGallery?"видна":"не видна")}, " +
+                $"красных диагоналей {frame.RedSlashCandidates}" +
                 (added>0 ? $"; добавлено {added}" : "; новых нет") + ".");
         }
         catch(Exception ex) when(ex is InvalidOperationException or ArgumentException or
