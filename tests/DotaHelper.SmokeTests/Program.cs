@@ -166,4 +166,26 @@ Check(!PositionProfile.IsStandard(cm, 1) &&
       PositionProfile.IsStandard(sf, 2),
       "Manual position profiles must distinguish all five positions");
 
-Console.WriteLine("Dota Helper 0.3 role regression tests passed.");
+// Dark Willow is a legitimate position-5 candidate and must not disappear
+// even when she ranks lower than 40 other eligible heroes.
+var willow = new Hero { Id = 119, Name = "Dark Willow",
+    InternalName = "npc_dota_hero_dark_willow", Roles = ["Support", "Disabler"] };
+Check(PositionProfile.IsStandard(willow, 5), "Dark Willow must qualify as pos 5");
+
+var manyCandidates = Enumerable.Range(10000, 60)
+    .Select(id => new Hero
+    {
+        Id = id, Name = "Hero " + id,
+        InternalName = "npc_dota_hero_crystal_maiden", Roles = ["Support"]
+    }).Concat([willow]).ToArray();
+var allFives = engine.Rank(manyCandidates, [], [], 5, new HashSet<int>(),
+    new Dictionary<int, IReadOnlyList<Matchup>>(), null, 0, HeroPoolMode.All);
+Check(allFives.Count == 61 && allFives.Any(x => x.Hero.Id == willow.Id),
+    "Eligible heroes must not be truncated to a top 40");
+Check(allFives.Select(r => r.PositionInRanking)
+    .SequenceEqual(Enumerable.Range(1, allFives.Count)),
+    "All candidates must retain their actual ranking for search");
+Check(allFives.All(x => x.ScoreBreakdown.Contains("противники")),
+    "Show factors affecting heuristic scores");
+
+Console.WriteLine("Dota Helper 0.3.1 recommendation visibility tests passed.");
