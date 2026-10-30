@@ -415,3 +415,58 @@ Check(banChanges == 2 && banSlot.SelectedHero is null,
 Check(DraftGameMode.AllPick != DraftGameMode.CaptainsMode,
     "All Pick and Captains Mode bans must remain distinct");
 Console.WriteLine("Dota Helper 0.9 draft UI model tests passed.");
+
+var wd = new Hero { Id = 30, Name = "Witch Doctor",
+    InternalName = "npc_dota_hero_witch_doctor" };
+var shadowDemon = new Hero { Id = 79, Name = "Shadow Demon",
+    InternalName = "npc_dota_hero_shadow_demon" };
+var legion = new Hero { Id = 104, Name = "Legion Commander",
+    InternalName = "npc_dota_hero_legion_commander" };
+var newLargo = new Hero { Id = 155, Name = "Largo",
+    InternalName = "npc_dota_hero_largo", RussianName = "Ларго" };
+
+Check(HeroSearch.Matches(wd, "вд") && HeroSearch.Matches(wd, "вич") &&
+      HeroSearch.Matches(wd, "Witch Doctor") && HeroSearch.Matches(wd, "wd"),
+    "Witch Doctor must match Russian/English common names and abbreviations");
+Check(HeroSearch.Matches(shadowDemon, "шд") &&
+      HeroSearch.Matches(shadowDemon, "шадоу") &&
+      !HeroSearch.Matches(wd, "шд"),
+    "Shadow Demon must match SHD without selecting Witch Doctor");
+Check(HeroSearch.Matches(legion, "легион") &&
+      HeroSearch.Matches(legion, "lc") &&
+      HeroSearch.Matches(legion, "ktubjy"),
+    "Legion Commander must match Russian alias and wrong keyboard layout");
+Check(HeroSearch.Matches(wd, "dl"),
+    "Russian VD typed with English keyboard layout should match WD");
+Check(HeroSearch.Matches(newLargo, "ларго") &&
+      !HeroSearch.Matches(newLargo, "легион") &&
+      HeroSearch.Matches(newLargo, ""),
+    "New heroes must match official Russian names; blank search shows all");
+Check(HeroSearch.Matches(new Hero {
+    Id = 1, Name = "Crystal Maiden", InternalName = "npc_dota_hero_crystal_maiden"
+}, "кристалка"),
+    "Common community nickname search must be supported");
+Check(HeroSearch.Matches(new Hero {
+    Id = 9999, Name = "Fantasy Test", InternalName = "npc_dota_hero_fantasy_test"
+}, "фантасй"),
+    "Automatic transliteration should cover heroes without manual aliases");
+Check(HeroSearch.Matches(new Hero {
+    Id = 42, Name = "Wraith King", InternalName = "npc_dota_hero_skeleton_king"
+}, "вк"),
+    "Community nicknames may use a different internal slug");
+
+var ruFixture = """
+{"result":{"data":{"heroes":[
+  {"id":30,"name_loc":"Вич Доктор"},
+  {"id":104,"name_loc":"Легион-командир"},
+  {"id":999,"name_loc":"English Only"}
+]}}}
+""";
+using (var ruDocument = JsonDocument.Parse(ruFixture))
+{
+    var localized = OpenDotaClient.ParseRussianHeroNames(ruDocument.RootElement);
+    Check(localized.Count == 2 && localized[30] == "Вич Доктор" &&
+          localized[104] == "Легион-командир",
+        "Official Valve RU feed must be parsed by hero ID and exclude English fallback");
+}
+Console.WriteLine("Dota Helper 0.9.1 Russian aliases and fixed-grid hero search tests passed.");
