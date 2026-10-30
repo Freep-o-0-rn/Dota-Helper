@@ -188,4 +188,40 @@ Check(allFives.Select(r => r.PositionInRanking)
 Check(allFives.All(x => x.ScoreBreakdown.Contains("противники")),
     "Show factors affecting heuristic scores");
 
-Console.WriteLine("Dota Helper 0.3.1 recommendation visibility tests passed.");
+// Regression: counterpicks must count ALL five opponents, emphasizing
+// enemy carry/mid/offlane, while retaining other enemies and lane opponents.
+var enemyCarry = new Hero { Id = 9001, Name = "Enemy Carry" };
+var enemySupport = new Hero { Id = 9002, Name = "Enemy Support" };
+var enemySlots = new[]
+{
+    new DraftSlot("A") { SelectedHero = enemyCarry },
+    new DraftSlot("B") { SelectedHero = enemySupport }
+};
+var opposingData = new Dictionary<int, IReadOnlyList<Matchup>>
+{
+    [9001] = [new Matchup { HeroId = carryA.Id, GamesPlayed = 500, Wins = 100 }],
+    [9002] = [new Matchup { HeroId = carryA.Id, GamesPlayed = 500, Wins = 400 }]
+};
+double Evaluate() => engine.Rank([carryA], [], enemySlots, 1,
+    new HashSet<int>(), opposingData, null, 0, HeroPoolMode.All)[0].Score;
+var bothUnknown = Evaluate();
+enemySlots[0].EnemyPosition = 1; // Beneficial counterpick to enemy carry
+enemySlots[1].EnemyPosition = 5;
+var coreFavorable = Evaluate();
+Check(coreFavorable > bothUnknown, "Positive matchup vs enemy carry must weigh more");
+enemySlots[0].EnemyPosition = 5;
+enemySlots[1].EnemyPosition = 2; // Unfavorable matchup vs enemy mid
+var coreUnfavorable = Evaluate();
+Check(coreUnfavorable < bothUnknown, "Negative matchup vs enemy mid must weigh more");
+enemySlots[0].EnemyPosition = 3;
+enemySlots[1].EnemyPosition = 5;
+enemySlots[0].IsLaneOpponent = true;
+Check(Evaluate() > coreFavorable, "Lane opponent bonus compounds with core priority");
+var summary = engine.Rank([carryA], [], enemySlots, 1, new HashSet<int>(),
+    opposingData, null, 0, HeroPoolMode.All)[0].CounterpickSummary;
+Check(summary.Contains("Enemy Carry") && summary.Contains("Enemy Support"),
+    "All enemy matchups must appear in explanation");
+Check(new DraftSlot("Unknown").EnemyPosition == 0,
+    "New enemies must have unknown roles by default");
+
+Console.WriteLine("Dota Helper 0.4 core-priority counterpick tests passed.");
