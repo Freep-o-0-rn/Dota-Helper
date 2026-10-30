@@ -72,4 +72,26 @@ var favoriteOnly = engine.Rank([carryA, carryB], [], [], 1, new HashSet<int> { 2
 Check(favoriteOnly.Count == 1 && favoriteOnly[0].Hero.Id == 2,
     "Favorites-only pool should exclude other heroes");
 
+// The remote API may send null pick fields; JSON parsing must remain resilient.
+var json = """{"id":1,"hero_id":0,"4_pick":null,"4_win":null,"5_pick":120,"5_win":66}""";
+var parsed = System.Text.Json.JsonSerializer.Deserialize<HeroStats>(json)!;
+Check(parsed.EffectiveId == 1 && parsed.InBracket(4).Picks == 0 &&
+      parsed.InBracket(5).Wins == 66, "Nullable OpenDota data should parse");
+
+// The common pool should exclude rare choices; All should still expose them.
+var sampleHeroes = Enumerable.Range(10, 20).Select(id =>
+    new Hero { Id = id, Name = $"Sample {id}", Roles = ["Support"] }).ToArray();
+var sampleStats = sampleHeroes.ToDictionary(h => h.Id, h => new HeroStats
+{
+    Id = h.Id,
+    Picks4 = h.Id < 16 ? 1 : 500,
+    Wins4 = h.Id < 16 ? 1 : 250
+});
+var common = engine.Rank(sampleHeroes, [], [], 5, new HashSet<int>(),
+    new Dictionary<int, IReadOnlyList<Matchup>>(), sampleStats, 4, HeroPoolMode.Common);
+var all = engine.Rank(sampleHeroes, [], [], 5, new HashSet<int>(),
+    new Dictionary<int, IReadOnlyList<Matchup>>(), sampleStats, 4, HeroPoolMode.All);
+Check(common.All(x => x.Hero.Id >= 16), "Common pool must filter the rare bottom quarter");
+Check(all.Any(x => x.Hero.Id < 16), "All pool must allow rare heroes");
+
 Console.WriteLine("Dota Helper 0.2 engine smoke tests passed.");
