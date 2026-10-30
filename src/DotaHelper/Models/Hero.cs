@@ -73,7 +73,7 @@ public sealed class HeroStats
     };
 }
 
-public enum HeroPoolMode { Common = 0, All = 1, Favorites = 2 }
+public enum HeroPoolMode { Common = 0, All = 1, Favorites = 2, Experimental = 3 }
 
 public sealed record RankOption(int Id, string Label)
 {
@@ -140,5 +140,7 @@ public sealed record Recommendation(
     public string PopularityLabel { get; init; } = "Популярность: нет данных";
     public string EvidenceLabel { get; init; } = "Матчапы: нет данных";
     public bool IsRare { get; init; }
+    public bool IsNonStandard { get; init; }
+    public string PositionLabel { get; init; } = "";
     public string RareLabel => IsRare ? "Редкий выбор" : "";
 }
