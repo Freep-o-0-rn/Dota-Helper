@@ -18,7 +18,8 @@ public sealed class RecommendationEngine
         IReadOnlyDictionary<int, HeroStats>? heroStatistics = null,
         int rankBracket = 0,
         HeroPoolMode pool = HeroPoolMode.Common,
-        bool professionalMeta = false)
+        bool professionalMeta = false,
+        IReadOnlyDictionary<int, IReadOnlyList<PositionSample>>? observedPositions = null)
     {
         var alreadyPicked = allies.Concat(enemies)
             .Select(slot => slot.SelectedHero?.Id)
@@ -50,19 +51,15 @@ public sealed class RecommendationEngine
             rareCutoff > 0 && rareCutoff < medianPicks &&
             heroPicks.GetValueOrDefault(heroId) <= rareCutoff;
 
-        // Conditional broad-pool mode: exclude only the lowest quarter by pick
-        // count, and only when bracket data is available. Show rare picks in All.
+        // No manual hero whitelist, Valve role archetypes or arbitrary popularity cutoff.
+        // The standard pool uses ONLY actual games at the selected position.
+        // Without a verified match sample we cannot claim the hero suits this role.
+        var observed = observedPositions ??
+            new Dictionary<int, IReadOnlyList<PositionSample>>();
         var candidates = heroes.Where(hero =>
-        {
-            if (alreadyPicked.Contains(hero.Id)) return false;
-            // Broad Carry/Support/Durable/Disabler tags are not observed positions.
-            // Enforce the same eligibility gate for positions 1, 2, 3, 4 and 5.
-            if (pool != HeroPoolMode.Experimental &&
-                !PositionProfile.IsStandard(hero, position)) return false;
-            if (pool == HeroPoolMode.Favorites) return favorites.Contains(hero.Id);
-            if (pool == HeroPoolMode.Common && !favorites.Contains(hero.Id) && IsRare(hero.Id)) return false;
-            return true;
-        });
+            !alreadyPicked.Contains(hero.Id) &&
+            (pool == HeroPoolMode.Experimental ||
+             PositionEvidence.IsEligible(observed, hero.Id, position)));
 
         var ranked = new List<Recommendation>();
         foreach (var hero in candidates)
@@ -109,10 +106,15 @@ public sealed class RecommendationEngine
                 ? Math.Clamp(weightedEdge / possibleWeight * 70.0, -17.0, 17.0)
                 : 0;
 
-            var isStandard = PositionProfile.IsStandard(hero, position);
-            // Same position-confidence prior across all five roles.
-            // This is a manual eligibility prior, NOT data on role-specific wins.
-            var roleFit = isStandard ? .82 : .12;
+            var isStandard = PositionEvidence.IsEligible(observed, hero.Id, position);
+            var sample = PositionEvidence.Find(observed, hero.Id, position);
+            var totalHeroGames = observed.TryGetValue(hero.Id, out var positionRows)
+                ? positionRows.Sum(r => (long)r.Games) : 0L;
+            var roleShare = sample is not null && totalHeroGames > 0
+                ? sample.Games / (double)totalHeroGames : 0;
+            // Empirical position eligibility is a gate, not an uncalibrated
+            // one-size-fits-all role score. Off-role experiments are penalized.
+            var roleAdjustment = isStandard ? 6.0 : -8.0;
             var favorite = favorites.Contains(hero.Id);
             double metaAdjustment = 0;
             double popularityAdjustment = 0;
@@ -128,31 +130,46 @@ public sealed class RecommendationEngine
                 var (p, w) = ReadStats(record);
                 if (p >= 100 && w >= 0 && w <= p)
                 {
-                    // Beta(100,100) smoothing; scale is intentionally modest.
-                    var winRate = (w + 100.0) / (p + 200.0);
-                    metaAdjustment = Math.Clamp((winRate - .5) * 40.0, -5.0, 5.0);
                     metaLabel = $"{sourceName}: WR (все роли) {100.0 * w / p:F1}% ({p:N0} пиков)";
-                    compactWinRate = $"WR {100.0 * w / p:F1}%";
+                    // Pro mode currently has no *professional* position split.
+                    // Use pro overall WR conservatively instead of falsely
+                    // labelling ranked position data as professional.
+                    if (professionalMeta)
+                    {
+                        var smoothed = (w + 100.0) / (p + 200.0);
+                        metaAdjustment = Math.Clamp((smoothed - .5) * 40.0, -5.0, 5.0);
+                        compactWinRate = $"Профи WR {100.0 * w / p:F1}%";
+                    }
                 }
-
                 if (p > 0 && totalPicks > 0)
                 {
                     var pickRate = 1000.0 * p / totalPicks;
                     popularityLabel = $"{sourceName}: частота выбора (все роли) ≈{pickRate:F1}% матчей";
                 }
-
-                if (p > 0 && medianPicks > 0)
-                    popularityAdjustment = Math.Clamp(Math.Log2(p / medianPicks) * 2.0, -4.0, 4.0);
             }
 
-            // Rule-of-thumb role archetypes are NOT verified position assignments.
-            var roleAdjustment = (roleFit - .5) * 35.0;
+            if (!professionalMeta && sample is { Games: >= PositionEvidence.MinGames } &&
+                sample.Wins >= 0 && sample.Wins <= sample.Games)
+            {
+                var smoothed = (sample.Wins + 100.0) / (sample.Games + 200.0);
+                metaAdjustment = Math.Clamp((smoothed - .5) * 55.0, -6.0, 6.0);
+                metaLabel = $"STRATZ: WR на позиции {position}: " +
+                    $"{100.0 * sample.Wins / sample.Games:F1}% ({sample.Games:N0} матчей)";
+                compactWinRate = $"Роль WR {100.0 * sample.Wins / sample.Games:F1}%";
+            }
+            // Raw global pick frequency is deliberately not used as evidence
+            // of strength on a specific position.
+            popularityAdjustment = 0;
             var score = Math.Clamp(50 + roleAdjustment + matchupAdjustment
                 + metaAdjustment + popularityAdjustment + (favorite ? 4 : 0), 0, 100);
 
             string roleLabel = isStandard
-                ? $"Позиция {position}: предварительно подходит (ручной пул, без статистики по патчу)"
-                : $"НЕСТАНДАРТНЫЙ пик на позицию {position}: данных о пригодности нет";
+                ? $"STRATZ: позиция {position}, {sample!.Games:N0} игр " +
+                  $"({roleShare:P1} всех известных игр героя)"
+                : sample is null
+                    ? $"Нет подтверждённых матчей на позиции {position}"
+                    : $"Недостаточно игр на позиции {position}: {sample.Games:N0} " +
+                      $"({roleShare:P1} игр героя)";
             string evidence = pickedEnemies.Count == 0
                 ? "Матчапы: враги не выбраны"
                 : $"Матчапы: {measured}/{pickedEnemies.Count} противников";
@@ -164,7 +181,8 @@ public sealed class RecommendationEngine
                 $"избранное {(favorite ? "+4.0" : "0.0")}.";
             string details = $"{roleLabel}. Контрпики: данные OpenDota о лигах, НЕ выбранный рейтинг. " +
                 "В расчёте участвуют все враги: керри/мид/оффлейн важнее, соперники по линии получают бонус. " +
-                "Это общие матчапы, а не показатели линии. Синергии и патч пока не учтены.";
+                "Это общие матчапы, а не показатели линии. Синергии и патч пока не учтены. " +
+                "Данные позиций STRATZ сгруппированы по двум соседним медалям.";
             var counterSummary = counterDetails.Count == 0
                 ? "Контрпики: достоверных результатов по выбранным противникам нет."
                 : "Контрпики по всей команде (вклад в балл): " +
@@ -185,8 +203,8 @@ public sealed class RecommendationEngine
                 IsRare = rare,
                 IsNonStandard = !isStandard,
                 PositionLabel = isStandard
-                    ? $"✓ Базовый пул позиции {position}"
-                    : $"⚠ Нестандартный герой для позиции {position}"
+                    ? $"✓ STRATZ: роль {position}, {sample!.Games:N0} матчей, {roleShare:P0}"
+                    : $"⚠ Статистика роли {position} недостаточна"
             });
         }
 
