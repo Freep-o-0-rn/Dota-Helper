@@ -7,8 +7,8 @@ static void Check(bool condition, string message)
 }
 
 var engine = new RecommendationEngine();
-var carryA = new Hero { Id = 1, Name = "Carry A", Roles = ["Carry"] };
-var carryB = new Hero { Id = 2, Name = "Carry B", Roles = ["Carry"] };
+var carryA = new Hero { Id = 1, Name = "Carry A", InternalName = "npc_dota_hero_juggernaut", Roles = ["Carry"] };
+var carryB = new Hero { Id = 2, Name = "Carry B", InternalName = "npc_dota_hero_luna", Roles = ["Carry"] };
 var opponentA = new Hero { Id = 3, Name = "Enemy A" };
 var opponentB = new Hero { Id = 4, Name = "Enemy B" };
 var laneSlot = new DraftSlot("Enemy A") { SelectedHero = opponentA };
@@ -64,7 +64,7 @@ Check(rank5[0].MetaLabel.Contains("60,0") || rank5[0].MetaLabel.Contains("60.0")
 
 var noSample = engine.Rank([carryA], [], [], 1, new HashSet<int>(),
     new Dictionary<int, IReadOnlyList<Matchup>>(), new Dictionary<int, HeroStats>(), 7);
-Check(noSample[0].MetaLabel.Contains("недостаточно"),
+Check(noSample[0].MetaLabel.Contains("нет данных"),
     "Missing stats must not pretend to be available");
 
 var favoriteOnly = engine.Rank([carryA, carryB], [], [], 1, new HashSet<int> { 2 },
@@ -80,7 +80,8 @@ Check(parsed.EffectiveId == 1 && parsed.InBracket(4).Picks == 0 &&
 
 // The common pool should exclude rare choices; All should still expose them.
 var sampleHeroes = Enumerable.Range(10, 20).Select(id =>
-    new Hero { Id = id, Name = $"Sample {id}", Roles = ["Support"] }).ToArray();
+    new Hero { Id = id, Name = $"Sample {id}",
+        InternalName = "npc_dota_hero_crystal_maiden", Roles = ["Support"] }).ToArray();
 var sampleStats = sampleHeroes.ToDictionary(h => h.Id, h => new HeroStats
 {
     Id = h.Id,
@@ -126,4 +127,43 @@ Check(experimental[0].Hero.Id != 42,
     "Even experimental off-role WK must not top rankings only due to global WR");
 Check(PositionProfile.IsStandard(lich, 5) && PositionProfile.IsStandard(rubick, 4),
     "Typical supports must remain eligible");
-Console.WriteLine("Dota Helper 0.2.1 role regression tests passed.");
+// All five positions must be filtered by a role-specific candidate pool.
+// A global high winrate must not put Crystal Maiden onto pos 1 or
+// Wraith King onto pos 2,3,4,5.
+var axe = new Hero { Id = 2_001, Name = "Axe",
+    InternalName = "npc_dota_hero_axe", Roles = ["Durable", "Initiator"] };
+var sf = new Hero { Id = 2_002, Name = "Shadow Fiend",
+    InternalName = "npc_dota_hero_nevermore", Roles = ["Carry", "Nuker"] };
+var cm = new Hero { Id = 2_003, Name = "Crystal Maiden",
+    InternalName = "npc_dota_hero_crystal_maiden", Roles = ["Support"] };
+var roleSet = new[] { wk, naix, axe, sf, cm, rubick, lich };
+var expectedStandard = new Dictionary<int, Hero[]>
+{
+    [1] = [wk, naix, sf],
+    [2] = [sf],
+    [3] = [axe],
+    [4] = [cm, rubick, lich],
+    [5] = [cm, rubick, lich]
+};
+foreach (var position in Enumerable.Range(1, 5))
+{
+    var recs = engine.Rank(roleSet, [], [], position, new HashSet<int>(),
+        new Dictionary<int, IReadOnlyList<Matchup>>(), null, 0, HeroPoolMode.All);
+    var actualIds = recs.Select(x => x.Hero.Id).ToHashSet();
+    var expectedIds = expectedStandard[position].Select(x => x.Id).ToHashSet();
+    Check(actualIds.SetEquals(expectedIds),
+        $"Position {position} must only recommend its standard pool");
+    var offRoleFavorite = engine.Rank(roleSet, [], [], position,
+        new HashSet<int> { expectedStandard[position][0].Id, cm.Id, wk.Id },
+        new Dictionary<int, IReadOnlyList<Matchup>>(), null, 0, HeroPoolMode.Favorites);
+    Check(offRoleFavorite.All(x => PositionProfile.IsStandard(x.Hero, position)),
+        $"Favorite hero must not bypass position {position} filter");
+}
+Check(!PositionProfile.IsStandard(cm, 1) &&
+      !PositionProfile.IsStandard(wk, 2) &&
+      !PositionProfile.IsStandard(wk, 3) &&
+      PositionProfile.IsStandard(axe, 3) &&
+      PositionProfile.IsStandard(sf, 2),
+      "Manual position profiles must distinguish all five positions");
+
+Console.WriteLine("Dota Helper 0.3 role regression tests passed.");
