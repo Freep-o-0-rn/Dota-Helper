@@ -138,15 +138,20 @@ public sealed class RecommendationEngine
             string evidence = pickedEnemies.Count == 0
                 ? "Матчапы: враги не выбраны"
                 : $"Матчапы: {measured}/{pickedEnemies.Count} противников";
-            string details = $"{roleLabel}. {evidence}. " +
-                $"{metaLabel}. {popularityLabel}. " +
-                "Синергии и патч-специфическая статистика пока не учтены.";
+            // Show exactly how a candidate got its heuristic score. No win-rate claims.
+            string contributions = $"Вклад в балл: роль {roleAdjustment:+0.0;-0.0;0.0}; " +
+                $"противники {matchupAdjustment:+0.0;-0.0;0.0}; " +
+                $"общий WR {metaAdjustment:+0.0;-0.0;0.0}; " +
+                $"популярность {popularityAdjustment:+0.0;-0.0;0.0}; " +
+                $"избранное {(favorite ? "+4.0" : "0.0")}.";
+            string details = $"{roleLabel}. Синергии, патч и статистика линии пока не учтены.";
             ranked.Add(new Recommendation(hero, score, measured, pickedEnemies.Count,
                 games, favorite, details)
             {
                 MetaLabel = metaLabel,
                 PopularityLabel = popularityLabel,
                 EvidenceLabel = evidence,
+                ScoreBreakdown = contributions,
                 IsRare = rare,
                 IsNonStandard = !isStandard,
                 PositionLabel = isStandard
@@ -155,11 +160,12 @@ public sealed class RecommendationEngine
             });
         }
 
+        // Do not silently discard eligible heroes from the recommendations.
         return ranked.OrderByDescending(r => r.Score)
             .ThenByDescending(r => r.OpponentsMeasured)
             .ThenByDescending(r => r.SampleGames)
             .ThenBy(r => r.Hero.Name)
-            .Take(40)
+            .Select((r, index) => r with { PositionInRanking = index + 1 })
             .ToList();
     }
 
