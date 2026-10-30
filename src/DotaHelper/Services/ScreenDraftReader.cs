@@ -37,7 +37,10 @@ public sealed record ScreenDraftObservation(
     IReadOnlyList<RecognizedHero?> DirePicks,
     IReadOnlyList<RecognizedHero> BannedHeroes,
     int RadiantPrePicks = 0,
-    int DirePrePicks = 0);
+    int DirePrePicks = 0,
+    bool HasTopBar = false,
+    bool HasHeroGallery = false,
+    int RedSlashCandidates = 0);
 
 /// <summary>
 /// Pure managed template similarity for the 10 on-screen pick rectangles and
@@ -415,8 +418,10 @@ public sealed class ScreenDraftReader : IDisposable
         var detectedBans=new Dictionary<int,RecognizedHero>();
         // Strategy screens include red map/ability art. Never scan them as bans.
         // Supports hero galleries grouped by roles, attributes or other layouts.
-        if(AutoDraftLayout.HasVisibleHeroGrid(screen))
-        foreach(var slash in PortraitRecognition.FindRedBanSlashes(screen,banArea))
+        var hasGallery=AutoDraftLayout.HasVisibleHeroGrid(screen);
+        var candidates=hasGallery ?
+            PortraitRecognition.FindRedBanSlashes(screen,banArea) : [];
+        foreach(var slash in candidates)
         {
             // Portrait is wider than the red diagonal slash bounds.
             var cx=slash.Left+slash.Width/2;
@@ -436,7 +441,8 @@ public sealed class ScreenDraftReader : IDisposable
                 detectedBans[match.HeroId]=match;
         }
         return new(Picks(radiantArea,true),Picks(direArea,false),
-            detectedBans.Values.ToArray(),radiantPre,direPre);
+            detectedBans.Values.ToArray(),radiantPre,direPre,
+            true,hasGallery,candidates.Count);
     }
 
     public void Dispose() => _http.Dispose();
