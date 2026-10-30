@@ -13,10 +13,14 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private readonly RecommendationEngine _engine = new();
     private readonly PreferencesStore _store = new();
     private UserPreferences _preferences = new();
+    private IReadOnlyDictionary<int, HeroStats> _heroStats = new Dictionary<int, HeroStats>();
+    private bool _statsAvailable;
     private int _selectedPosition = 3;
     private int _revision;
     private string _status = "Загрузка...";
     private Recommendation? _selectedRecommendation;
+    private RankOption? _selectedRank;
+    private PoolOption? _selectedPool;
 
     public ObservableCollection<Hero> Heroes { get; } = [];
     public ObservableCollection<DraftSlot> Allies { get; } = [];
@@ -24,12 +28,28 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public ObservableCollection<Recommendation> Recommendations { get; } = [];
     public int[] Positions { get; } = [1, 2, 3, 4, 5];
 
+    public IReadOnlyList<RankOption> RankOptions { get; } =
+    [
+        new(0, "Все доступные ранги"),
+        new(1, "Рекрут"), new(2, "Страж"), new(3, "Рыцарь"),
+        new(4, "Герой"), new(5, "Легенда"),
+        new(6, "Властелин"), new(7, "Божество")
+    ];
+    public IReadOnlyList<PoolOption> PoolOptions { get; } =
+    [
+        new(HeroPoolMode.Common, "Без редких (25%)"),
+        new(HeroPoolMode.All, "Все герои"),
+        new(HeroPoolMode.Favorites, "Только избранные")
+    ];
+
     public MainViewModel()
     {
         for (var i = 1; i <= 4; i++) Allies.Add(new DraftSlot($"Союзник {i}"));
         for (var i = 1; i <= 5; i++) Enemies.Add(new DraftSlot($"Противник {i}"));
         foreach (var slot in Allies.Concat(Enemies))
             slot.Changed += (_, _) => DraftChanged?.Invoke(this, EventArgs.Empty);
+        _selectedRank = RankOptions[0];
+        _selectedPool = PoolOptions[0];
     }
 
     public int SelectedPosition
@@ -39,6 +59,32 @@ public sealed class MainViewModel : INotifyPropertyChanged
         {
             if (value is < 1 or > 5 || _selectedPosition == value) return;
             _selectedPosition = value;
+            OnPropertyChanged();
+            DraftChanged?.Invoke(this, EventArgs.Empty);
+            _ = SavePreferencesAsync();
+        }
+    }
+
+    public RankOption? SelectedRank
+    {
+        get => _selectedRank;
+        set
+        {
+            if (value is null || Equals(_selectedRank, value)) return;
+            _selectedRank = value;
+            OnPropertyChanged();
+            DraftChanged?.Invoke(this, EventArgs.Empty);
+            _ = SavePreferencesAsync();
+        }
+    }
+
+    public PoolOption? SelectedPool
+    {
+        get => _selectedPool;
+        set
+        {
+            if (value is null || Equals(_selectedPool, value)) return;
+            _selectedPool = value;
             OnPropertyChanged();
             DraftChanged?.Invoke(this, EventArgs.Empty);
             _ = SavePreferencesAsync();
@@ -64,17 +110,34 @@ public sealed class MainViewModel : INotifyPropertyChanged
     {
         _preferences = await _store.LoadAsync();
         SelectedPosition = _preferences.SelectedPosition;
+        SelectedRank = RankOptions.FirstOrDefault(x => x.Id == _preferences.SelectedRankBracket)
+                       ?? RankOptions[0];
+        SelectedPool = PoolOptions.FirstOrDefault(x => (int)x.Mode == _preferences.SelectedPoolMode)
+                       ?? PoolOptions[0];
+
         try
         {
             var heroes = await _api.GetHeroesAsync();
             foreach (var hero in heroes) Heroes.Add(hero);
-            Status = $"Загружено героев: {Heroes.Count}. Укажи врагов и союзников.";
-            await RecalculateAsync();
         }
         catch (Exception ex)
         {
             Status = $"Не удалось загрузить каталог героев: {ex.Message}";
+            return;
         }
+
+        try
+        {
+            var stats = await _api.GetHeroStatsAsync();
+            _heroStats = stats.GroupBy(s => s.Id)
+                .ToDictionary(g => g.Key, g => g.First());
+            _statsAvailable = _heroStats.Count > 0;
+        }
+        catch
+        {
+            _statsAvailable = false;
+        }
+        await RecalculateAsync();
     }
 
     public void ClearSlot(DraftSlot? slot)
@@ -100,34 +163,41 @@ public sealed class MainViewModel : INotifyPropertyChanged
         var selectedEnemies = Enemies.Where(s => s.SelectedHero is not null)
             .Select(s => s.SelectedHero!.Id).Distinct().ToList();
 
-        Status = "Рассчитываем рекомендации...";
+        Status = "Расчёт рекомендаций...";
         var results = await Task.WhenAll(selectedEnemies.Select(async enemyId =>
         {
             try { return (Id: enemyId, Data: await _api.GetMatchupsAsync(enemyId), Error: false); }
             catch { return (Id: enemyId, Data: (IReadOnlyList<Matchup>)[], Error: true); }
         }));
-
         if (revision != _revision) return;
 
         var matchups = results.Where(r => !r.Error)
             .ToDictionary(r => r.Id, r => r.Data);
-
-        var recommendations = _engine.Rank(
-            Heroes.ToList(), Allies.ToList(), Enemies.ToList(),
-            SelectedPosition, _preferences.FavoriteHeroIds, matchups);
+        var priorSelectionId = SelectedRecommendation?.Hero.Id;
+        var ranked = _engine.Rank(
+            Heroes.ToList(), Allies.ToList(), Enemies.ToList(), SelectedPosition,
+            _preferences.FavoriteHeroIds, matchups, _heroStats,
+            SelectedRank?.Id ?? 0, SelectedPool?.Mode ?? HeroPoolMode.Common);
 
         Recommendations.Clear();
-        foreach (var item in recommendations) Recommendations.Add(item);
+        foreach (var item in ranked) Recommendations.Add(item);
+        SelectedRecommendation = priorSelectionId.HasValue
+            ? Recommendations.FirstOrDefault(r => r.Hero.Id == priorSelectionId.Value)
+            : null;
 
         var unavailable = results.Count(r => r.Error);
-        Status = unavailable > 0
-            ? $"Рекомендации частичные: нет данных по {unavailable} противникам. Проверь соединение."
-            : "Условный рейтинг, НЕ шанс победы. Матчапы OpenDota; по ролям — эвристика. Данные могут быть кэшированы.";
+        Status = !_statsAvailable
+            ? "Внимание: /heroStats недоступен. Популярность и общий WR отсутствуют; оценки предварительные."
+            : unavailable > 0
+                ? $"Недоступны матчапы для {unavailable} врагов. Показаны частичные данные."
+                : "0.2: выборка OpenDota, НЕ шанс победы. Позиции приблизительные, патч и синергии не учтены.";
     }
 
     private async Task SavePreferencesAsync()
     {
         _preferences.SelectedPosition = SelectedPosition;
+        _preferences.SelectedRankBracket = SelectedRank?.Id ?? 0;
+        _preferences.SelectedPoolMode = (int)(SelectedPool?.Mode ?? HeroPoolMode.Common);
         try { await _store.SaveAsync(_preferences); }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {

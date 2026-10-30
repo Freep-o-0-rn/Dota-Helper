@@ -7,8 +7,7 @@ using DotaHelper.Models;
 namespace DotaHelper.Services;
 
 /// <summary>
-/// Anonymous OpenDota API client. Cached responses reduce API traffic;
-/// stale cached responses are used if the network is unavailable.
+/// Read-only OpenDota API client. Disk cache works across numbered installations.
 /// </summary>
 public sealed class OpenDotaClient
 {
@@ -27,14 +26,15 @@ public sealed class OpenDotaClient
         return heroes.OrderBy(h => h.Name).ToList();
     }
 
+    public async Task<IReadOnlyList<HeroStats>> GetHeroStatsAsync() =>
+        await GetCachedAsync<List<HeroStats>>(
+            "hero-stats.json", "heroStats", TimeSpan.FromHours(3));
+
     public async Task<IReadOnlyList<Matchup>> GetMatchupsAsync(int enemyHeroId)
     {
-        // Each opposing hero needs one request, never one request per candidate.
+        // Only one request per selected enemy even with concurrent recalculations.
         var task = _inflight.GetOrAdd(enemyHeroId, FetchMatchupsAsync);
-        try
-        {
-            return await task;
-        }
+        try { return await task; }
         finally
         {
             if (_inflight.TryGetValue(enemyHeroId, out var current) && ReferenceEquals(current, task))
@@ -42,14 +42,11 @@ public sealed class OpenDotaClient
         }
     }
 
-    private async Task<IReadOnlyList<Matchup>> FetchMatchupsAsync(int heroId)
-    {
-        var results = await GetCachedAsync<List<Matchup>>(
+    private async Task<IReadOnlyList<Matchup>> FetchMatchupsAsync(int heroId) =>
+        await GetCachedAsync<List<Matchup>>(
             $"matchups-{heroId}.json",
             $"heroes/{heroId}/matchups",
             TimeSpan.FromHours(24));
-        return results;
-    }
 
     private async Task<T> GetCachedAsync<T>(string fileName, string endpoint, TimeSpan lifetime)
         where T : class
@@ -62,8 +59,7 @@ public sealed class OpenDotaClient
             if (!File.Exists(path)) return null;
             try
             {
-                var json = await File.ReadAllTextAsync(path);
-                return JsonSerializer.Deserialize<T>(json);
+                return JsonSerializer.Deserialize<T>(await File.ReadAllTextAsync(path));
             }
             catch (Exception ex) when (ex is IOException or JsonException or UnauthorizedAccessException)
             {
@@ -88,13 +84,13 @@ public sealed class OpenDotaClient
                 var result = JsonSerializer.Deserialize<T>(json)
                              ?? throw new JsonException("Пустой ответ OpenDota.");
                 try { await File.WriteAllTextAsync(path, json); }
-                catch (IOException) { /* Network data can still be used. */ }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    // Keep the fresh network result even if caching fails.
+                }
                 return result;
             }
-            finally
-            {
-                _requestGate.Release();
-            }
+            finally { _requestGate.Release(); }
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException)
         {
@@ -111,7 +107,7 @@ public sealed class OpenDotaClient
             BaseAddress = new Uri("https://api.opendota.com/api/"),
             Timeout = TimeSpan.FromSeconds(12)
         };
-        client.DefaultRequestHeaders.UserAgent.ParseAdd("DotaHelper/0.1");
+        client.DefaultRequestHeaders.UserAgent.ParseAdd("DotaHelper/0.2");
         return client;
     }
 }

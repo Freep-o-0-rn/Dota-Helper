@@ -1,56 +1,42 @@
-# План Dota Helper
+# Dota Helper — development plan
 
-## Цель
+## Direction
 
-Помогать игроку выбирать героев, понимая позицию, врагов на линии, весь вражеский состав, союзников и любимый пул героев. В будущем — подсказки во время матча, только по информации, доступной игроку.
+Dota drafting assistant first, tactical observer later. Never read hidden game memory or automate gameplay.
 
-## 0.1: базовый драфт (в разработке)
+## 0.2 — transparent ranking (implemented)
 
-1. Каталог OpenDota и ручной ввод 4 союзников / 5 врагов.
-2. Выбор позиции 1–5 и маркировка врагов своей линии.
-3. Прототип скоринга с честной маркировкой неопределённости.
-4. Любимые герои, кэш, обновление рекомендаций по изменению драфта.
+- Manual 4 ally / 5 enemy draft and selected rank position 1–5.
+- OpenDota /heroStats aggregate pick and win counts for available rank brackets.
+- Conservative matchup score with sample shrinkage and missing-opponent neutrality.
+- Favorite heroes and alternative hero pools: common, all, favorites-only.
+- Default common pool excludes the bottom quarter by pick count in the selected bracket. This is a convenience filter, **not a skill or balance verdict**.
+- Explain the source and limits of every displayed score.
+- Automated build and ranking smoke tests on Windows.
 
-## 0.2: полезный аналитический помощник
+## Important limitations
 
-1. Проверенные данные по позициям и линиям, с разбивкой по версии игры и MMR.
-2. Статистика синергий союзников с учётом объёма выборки.
-3. Отдельные субоценки: линия, контрпик, синергия, комфорт, мета.
-4. Фильтры героев, поисковая строка, постеры и изображения.
-5. Тесты формулы, проверка перекосов выборки, отображение даты обновления.
+- /heroStats and /heroes/{id}/matchups are NOT guaranteed to be restricted to the current patch.
+- Matchup statistics do NOT constitute lane-specific results.
+- Rank groups are applied to overall pick/win stats, NOT to matchup results.
+- Immortal statistics can be withheld/zero from OpenDota. Only available Herald through Divine groups are exposed.
+- "Role" uses Valve/OpenDota broad labels, not observed position 1–5 distributions.
+- Ally synergy is not yet calculated. No teamfight composition strategy, pick/ban, or flexible assignments yet.
+- No claim that the numerical 0–100 heuristic is a win probability.
+- Pick rate is an approximation based on total 10 hero picks per match and may be distorted by the sampled dataset; compare within the same bracket only.
 
-## 0.3: автоматическая интеграция
+## Next steps
 
-1. Исследование доступности Game State Integration в реальном драфте обычного матча.
-2. Только если GSI недостаточно — распознавание видимых портретов без чтения памяти.
-3. Возможность вручную поправить любой распознанный пик.
-4. Удобное компактное окно и проверка правил игры/платформы.
+1. Verify real data under several drafts; inspect Tree Protector results across ranks and filters.
+2. Integrate a reliable role-by-position dataset with date/patch/sample metadata.
+3. Add synergy evidence and lane outcomes with confidence intervals.
+4. Replace plain dropdowns with portrait-based draft UI and search.
+5. Game State Integration feasibility test for drafting, compliant with Valve policies.
+6. Tactical assistant: visible-information-only objective timer, suggested wards and danger zones.
 
-## 1.0: стабильная программа
+## Local development
 
-1. Установка и обновление, сохранение настроек.
-2. Локальный API кэш и лимиты запросов, безопасное хранение ключей при необходимости.
-3. Стабильная работа при отсутствии интернета.
-4. Релиз с проверкой сборки и реальным игровым тестированием.
-
-## 2.0: Tactical Assistant (позже)
-
-Подсказки о телепортах, таймингах рун/лотосов/Рошана/Терзателя, вардах и опасных участках. Вероятностные гипотезы о перемещениях врагов, никогда доступ к невидимой информации. Без макросов, управления героем, чтения памяти и скрытых игровых данных.
-
-## Важные решения
-
-- Разрабатываем под Windows на C# и WPF.
-- Первая версия запускается отдельно, без взаимодействия с игрой.
-- Рекомендации не должны выдавать эвристическую оценку за вероятность победы.
-- Из OpenDota /heroes/{id}/matchups значение wins относится к запрошенному герою, поэтому при запросе для ВРАГА результат для кандидата инвертируем.
-- Для матчапов используем априорное сглаживание Beta(25,25), отсеиваем результаты менее 10 игр; враги на линии имеют вес 2, остальные — вес 1.
-- Роль 1–5 пока соответствует тегам Carry, Nuker, Initiator, Durable, Support и Disabler лишь приблизительно. Метаданные роли OpenDota не являются позиционной статистикой.
-- Синергии с союзниками пока не рассчитываются, вместо выдуманных цифр показываем ограничение.
-- Следующий этап — подтвердить качество, выборку и патч актуальных источников.
-
-## Вопросы для следующего обсуждения
-
-- Первый целевой режим: рейтинг, обычная игра или оба?
-- Нужно ли отдельное компактное окно или только главное окно?
-- Требуется ли интерфейс только на русском или переключение RU/EN?
-- Какие любимые герои и позиции должны быть выставлены изначально?
+- Build: dotnet build src/DotaHelper/DotaHelper.csproj
+- Run: dotnet run --project src/DotaHelper/DotaHelper.csproj
+- Automated test: dotnet run --project tests/DotaHelper.SmokeTests/DotaHelper.SmokeTests.csproj
+- Downloads: successful GitHub Actions artifacts from the Windows build workflow.

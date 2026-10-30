@@ -13,7 +13,7 @@ var opponentA = new Hero { Id = 3, Name = "Enemy A" };
 var opponentB = new Hero { Id = 4, Name = "Enemy B" };
 var laneSlot = new DraftSlot("Enemy A") { SelectedHero = opponentA };
 var otherSlot = new DraftSlot("Enemy B") { SelectedHero = opponentB };
-var data = new Dictionary<int, IReadOnlyList<Matchup>>
+var matchupData = new Dictionary<int, IReadOnlyList<Matchup>>
 {
     [3] =
     [
@@ -28,24 +28,48 @@ var data = new Dictionary<int, IReadOnlyList<Matchup>>
 };
 
 var onlyA = engine.Rank([carryA, carryB, opponentA], [], [laneSlot], 1,
-    new HashSet<int>(), data);
-Check(onlyA[0].Hero.Id == 1, "Querying enemy matchups must invert enemy wins");
+    new HashSet<int>(), matchupData);
+Check(onlyA[0].Hero.Id == 1, "Enemy wins must be inverted for candidate");
 Check(onlyA.All(x => x.Hero.Id != opponentA.Id), "Picked heroes must be excluded");
 
 var neutral = engine.Rank([carryA, carryB, opponentA, opponentB],
-    [], [laneSlot, otherSlot], 1, new HashSet<int>(), data);
+    [], [laneSlot, otherSlot], 1, new HashSet<int>(), matchupData);
 var neutralScore = neutral.Single(x => x.Hero.Id == 1).Score;
-
 laneSlot.IsLaneOpponent = true;
 var weighted = engine.Rank([carryA, carryB, opponentA, opponentB],
-    [], [laneSlot, otherSlot], 1, new HashSet<int>(), data);
+    [], [laneSlot, otherSlot], 1, new HashSet<int>(), matchupData);
 Check(weighted.Single(x => x.Hero.Id == 1).Score > neutralScore,
-    "Lane opponent must receive higher weight");
+    "Lane opponent must receive more weight than other opponent");
 
 var withFavorite = engine.Rank([carryA, carryB, opponentA, opponentB],
-    [], [laneSlot, otherSlot], 1, new HashSet<int> { 1 }, data);
+    [], [laneSlot, otherSlot], 1, new HashSet<int> { 1 }, matchupData);
 Check(Math.Abs(withFavorite.Single(x => x.Hero.Id == 1).Score -
-               weighted.Single(x => x.Hero.Id == 1).Score - 5.0) < 0.001,
-    "Favorites should receive a five-point bonus");
+               weighted.Single(x => x.Hero.Id == 1).Score - 4.0) < 0.001,
+    "Favorites must receive four point bonus");
 
-Console.WriteLine("Dota Helper engine smoke tests passed.");
+var stats = new Dictionary<int, HeroStats>
+{
+    [1] = new HeroStats { Id = 1, Picks4 = 2000, Wins4 = 1200, Picks5 = 2000, Wins5 = 1200 },
+    [2] = new HeroStats { Id = 2, Picks4 = 1000, Wins4 = 450, Picks5 = 1200, Wins5 = 500 }
+};
+var rank4 = engine.Rank([carryA, carryB], [], [], 1, new HashSet<int>(),
+    new Dictionary<int, IReadOnlyList<Matchup>>(), stats, rankBracket: 4);
+Check(rank4[0].Hero.Id == 1, "Higher rank-specific win rate should contribute positively");
+Check(rank4[0].MetaLabel.Contains("60,0") || rank4[0].MetaLabel.Contains("60.0"),
+    "Rank-specific win rate should be displayed");
+var rank5 = engine.Rank([carryA, carryB], [], [], 1, new HashSet<int>(),
+    new Dictionary<int, IReadOnlyList<Matchup>>(), stats, rankBracket: 5);
+Check(rank5[0].MetaLabel.Contains("60,0") || rank5[0].MetaLabel.Contains("60.0"),
+    "Rank bracket data should be selected, not pooled across tiers");
+
+var noSample = engine.Rank([carryA], [], [], 1, new HashSet<int>(),
+    new Dictionary<int, IReadOnlyList<Matchup>>(), new Dictionary<int, HeroStats>(), 7);
+Check(noSample[0].MetaLabel.Contains("недостаточно"),
+    "Missing stats must not pretend to be available");
+
+var favoriteOnly = engine.Rank([carryA, carryB], [], [], 1, new HashSet<int> { 2 },
+    new Dictionary<int, IReadOnlyList<Matchup>>(), stats, 0, HeroPoolMode.Favorites);
+Check(favoriteOnly.Count == 1 && favoriteOnly[0].Hero.Id == 2,
+    "Favorites-only pool should exclude other heroes");
+
+Console.WriteLine("Dota Helper 0.2 engine smoke tests passed.");

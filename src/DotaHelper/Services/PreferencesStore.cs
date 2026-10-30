@@ -6,6 +6,8 @@ namespace DotaHelper.Services;
 public sealed class UserPreferences
 {
     public int SelectedPosition { get; set; } = 3;
+    public int SelectedRankBracket { get; set; } = 0;
+    public int SelectedPoolMode { get; set; } = 0;
     public HashSet<int> FavoriteHeroIds { get; set; } = [];
 }
 
