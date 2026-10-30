@@ -336,6 +336,14 @@ public partial class MainWindow : Window
                 using var bmp=AutoDotaWindow.Capture(window.Value);
                 return reader.AnalyzeAutomatic(bmp);
             });
+            if(!frame.HasTopBar)
+            {
+                _screenEvidence.Clear();
+                _viewModel.SetScreenStatus(
+                    "Экран: окно Dota 2 найдено, но две полосы из пяти портретов " +
+                    "не обнаружены. Пики и препики не определяются.");
+                return;
+            }
             var radiant=frame.RadiantPicks.Select((hit,i) =>
                 ConfirmScreenHit($"r{i}",hit)).ToArray();
             var dire=frame.DirePicks.Select((hit,i) =>
@@ -355,7 +363,8 @@ public partial class MainWindow : Window
                 $"Dota 2: подтверждено пиков {radiant.Count(h=>h is not null)}+" +
                 $"{dire.Count(h=>h is not null)}, препиков " +
                 $"{frame.RadiantPrePicks+frame.DirePrePicks}, " +
-                $"банов {bans.Length}" +
+                $"банов {bans.Length}, " +
+                $"неопознанных портретов {frame.UnknownSlots}" +
                 $"; сетка {(frame.HasHeroGallery?"видна":"не видна")}, " +
                 $"красных диагоналей {frame.RedSlashCandidates}" +
                 (added>0 ? $"; добавлено {added}" : "; новых нет") + ".");
