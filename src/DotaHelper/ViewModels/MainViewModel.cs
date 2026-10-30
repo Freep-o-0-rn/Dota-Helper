@@ -28,6 +28,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private string _status = "Загрузка...";
     private string _gsiStatus = "GSI: не подключён. Нажми «Подключить Dota 2».";
     private long? _gsiMatchId;
+    private Hero? _gsiOwnHero;
     private readonly Dictionary<DraftSlot, int> _gsiOwnedPicks = [];
     private readonly Dictionary<BanSlot, int> _gsiOwnedBans = [];
     private string _patchDisplay = "Патч: проверка Valve · данные STRATZ исторические";
@@ -363,11 +364,20 @@ public sealed class MainViewModel : INotifyPropertyChanged
             SelectedSide = TeamSides.First(x => x.IsRadiant == side);
 
         var byId = Heroes.ToDictionary(h => h.Id);
-        var ownedId = Heroes.FirstOrDefault(h =>
+        var ownedHero = Heroes.FirstOrDefault(h =>
             string.Equals(h.InternalName, state.OwnHeroName,
                 StringComparison.OrdinalIgnoreCase) ||
             string.Equals(h.Name, state.OwnHeroName,
-                StringComparison.OrdinalIgnoreCase))?.Id ?? 0;
+                StringComparison.OrdinalIgnoreCase));
+        var ownedId = ownedHero?.Id ?? 0;
+        // During ordinary All Pick the local client's hero name may be the
+        // only actual pick GSI exposes. Show it accurately in our fifth tile.
+        if (ownedHero is not null)
+        {
+            _gsiOwnHero = ownedHero;
+            _previewSlot.IsGsiConfirmed = true;
+            _previewSlot.SelectedHero = ownedHero;
+        }
 
         var ownRadiant = state.PlayerRadiant ?? (SelectedSide?.IsRadiant != false);
         var allyPicks = ownRadiant ? state.RadiantPicks : state.DirePicks;
@@ -405,6 +415,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     private void ClearPreviousGsiSelections()
     {
+        _gsiOwnHero = null;
+        _previewSlot.IsGsiConfirmed = false;
+        _previewSlot.SelectedHero = SelectedRecommendation?.Hero;
         foreach (var (slot, id) in _gsiOwnedPicks)
         {
             if (slot.SelectedHero?.Id == id)
@@ -431,7 +444,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         set
         {
             _selectedRecommendation = value;
-            _previewSlot.SelectedHero = value?.Hero;
+            _previewSlot.SelectedHero = _gsiOwnHero ?? value?.Hero;
             OnPropertyChanged();
         }
     }
@@ -514,6 +527,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
         foreach (var slot in Allies.Concat(Enemies))
             ClearSlot(slot);
         ClearBans();
+        _gsiOwnHero = null;
+        _previewSlot.IsGsiConfirmed = false;
+        _previewSlot.SelectedHero = SelectedRecommendation?.Hero;
         _gsiOwnedPicks.Clear();
         _gsiOwnedBans.Clear();
     }
