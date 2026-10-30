@@ -226,4 +226,84 @@ Check(StratzClient.DescribeHttpError(System.Net.HttpStatusCode.Forbidden,
 Check(StratzClient.DescribeHttpError((System.Net.HttpStatusCode)429,
     "application/json", "{}").Contains("429"),
     "Rate limiting must be explained");
-Console.WriteLine("Dota Helper 0.6.1 STRATZ authentication diagnostics passed.");
+// STRATZ matchUp.with contains win rates when the queried ally and
+// candidate play in the SAME TEAM; matchUp.vs is not synergy data.
+var synergyJson = """
+{
+ "data":{"heroStats":{"matchUp":[
+  {"with":[
+   {"heroId2":145,"matchCount":700,"winCount":430},
+   {"heroId2":119,"matchCount":300,"winCount":145},
+   {"heroId2":145,"matchCount":50,"winCount":10},
+   {"heroId2":155,"matchCount":500,"winCount":250},
+   {"heroId2":42,"matchCount":4,"winCount":3}
+  ],"vs":[{"heroId2":42,"matchCount":200,"winCount":30}]}
+ ]}}
+}
+""";
+var partnerSamples = StratzClient.ParseSynergies(synergyJson, 155);
+Check(partnerSamples.Count == 2, "Synergies must ignore self, tiny samples and vs opponents");
+Check(partnerSamples.Single(x => x.HeroId == 145).GamesPlayed == 700 &&
+      partnerSamples.Single(x => x.HeroId == 145).Wins == 430,
+    "Synergy parser must preserve larger samples and wins");
+try
+{
+    _ = StratzClient.ParseSynergies("""{"errors":[{"message":"bad"}],"data":null}""", 155);
+    throw new Exception("GraphQL synergy error must not be accepted as neutral data");
+}
+catch (JsonException) { }
+
+var allySlot = new DraftSlot("Largo") { SelectedHero = largo };
+var noAllyEvidence = engine.Rank([kez], [allySlot], [], 1,
+    new HashSet<int>(), emptyMatchups, null, 0, HeroPoolMode.All,
+    observedPositions: samples)[0];
+var allAllyData = new Dictionary<int, IReadOnlyList<Matchup>> { [155] = partnerSamples };
+var withAllyEvidence = engine.Rank([kez], [allySlot], [], 1,
+    new HashSet<int>(), emptyMatchups, null, 0, HeroPoolMode.All,
+    observedPositions: samples, allySynergies: allAllyData)[0];
+Check(withAllyEvidence.Score > noAllyEvidence.Score,
+    "Positive teammate results should increase a candidate's rating");
+Check(withAllyEvidence.SynergySummary.Contains("Largo") &&
+      withAllyEvidence.CompactSynergy.Contains("Союзники"),
+    "Explain teammate sample and show short synergy score");
+allAllyData[155] =
+[
+    new Matchup { HeroId = 145, GamesPlayed = 700, Wins = 220 }
+];
+var badAlly = engine.Rank([kez], [allySlot], [], 1,
+    new HashSet<int>(), emptyMatchups, null, 0, HeroPoolMode.All,
+    observedPositions: samples, allySynergies: allAllyData)[0];
+Check(badAlly.Score < noAllyEvidence.Score,
+    "Negative joint win-rate must penalize a candidate");
+
+// Synergies must not be able to outweigh counters in raw score contribution.
+Check(Math.Abs(withAllyEvidence.Score - noAllyEvidence.Score) <= 7.001,
+    "Synergy adjustment must never exceed seven points");
+
+// Steam numeric ID and custom /id/ links are resolved without API credentials.
+// Public XML is deprecated, so parsing failures must remain explicit.
+var (_, vanity) = SteamProfileResolver.ParseInput(
+    "https://steamcommunity.com/id/_FreeP0rn/");
+Check(vanity == "_FreeP0rn", "User's custom Steam vanity must be accepted");
+var (steamAccount, ignored) = SteamProfileResolver.ParseInput(
+    "https://steamcommunity.com/profiles/76561198108247405/");
+Check(steamAccount.HasValue && ignored is null,
+    "Numeric SteamID64 links must remain supported");
+var xmlAccount = SteamProfileResolver.ParseSteamId64FromXml(
+    "<profile><steamID64>76561198108247405</steamID64></profile>");
+Check(xmlAccount == steamAccount, "Public XML SteamID64 must map to same account");
+try
+{
+    SteamProfileResolver.ParseInput("https://example.com/id/_FreeP0rn/");
+    throw new Exception("Unexpected hosts must be rejected");
+}
+catch (ArgumentException) { }
+try
+{
+    SteamProfileResolver.ParseSteamId64FromXml(
+        "<!DOCTYPE foo [<!ENTITY xxe SYSTEM 'file:///etc/passwd'>]><profile>&xxe;</profile>");
+    throw new Exception("XML DTD must be prohibited");
+}
+catch (System.Xml.XmlException) { }
+
+Console.WriteLine("Dota Helper 0.7 allied synergy and vanity URL regression tests passed.");
