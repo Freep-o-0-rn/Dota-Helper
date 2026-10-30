@@ -10,6 +10,7 @@ namespace DotaHelper.ViewModels;
 public sealed class MainViewModel : INotifyPropertyChanged
 {
     private readonly OpenDotaClient _api = new();
+    private readonly StratzClient _positions = new();
     private readonly RecommendationEngine _engine = new();
     private readonly PreferencesStore _store = new();
     private readonly SemaphoreSlim _saveGate = new(1, 1);
@@ -321,12 +322,28 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
         var matchups = results.Where(r => !r.Error)
             .ToDictionary(r => r.Id, r => r.Data);
+
+        PositionSnapshot? observed = null;
+        string? positionError = null;
+        try
+        {
+            observed = await _positions.GetPositionSamplesAsync(
+                Heroes.ToList(), SelectedRank?.Id ?? 0,
+                SelectedMeta?.Mode == MetaMode.Professional);
+        }
+        catch (Exception ex)
+        {
+            positionError = ex.Message;
+        }
+        if (revision != _revision) return;
+
         var priorSelectionId = SelectedRecommendation?.Hero.Id;
         var ranked = _engine.Rank(
             Heroes.ToList(), Allies.ToList(), Enemies.ToList(), SelectedPosition,
             _preferences.FavoriteHeroIds, matchups, _heroStats,
             SelectedRank?.Id ?? 0, SelectedPool?.Mode ?? HeroPoolMode.All,
-            SelectedMeta?.Mode == MetaMode.Professional);
+            SelectedMeta?.Mode == MetaMode.Professional,
+            observed?.ByHero);
 
         Recommendations.Clear();
         foreach (var item in ranked) Recommendations.Add(item);
@@ -341,14 +358,24 @@ public sealed class MainViewModel : INotifyPropertyChanged
             proMode ? x.InProMatches().Picks > 0 : x.InBracket(SelectedRank?.Id ?? 0).Picks > 0);
         if (Recommendations.Count == 0)
         {
-            Status = "Нет подходящих героев для выбранной роли; попробуй «Эксперимент».";
+            Status = positionError is not null
+                ? "По ролям: " + positionError
+                : "Нет достаточной статистики STRATZ по выбранной позиции. " +
+                  "Можно выбрать «Эксперимент», но позиции не будут подтверждены.";
             return;
         }
-        Status = !_statsAvailable || !baselinePresent
-            ? "Выбранная мета: статистика WR недоступна. Контрпики — общие данные лиг OpenDota."
-            : unavailable > 0
-                ? $"Недоступны матчапы {unavailable} врагов. Контрпики рассчитаны частично."
-                : "0.4: контрпики всех врагов; приоритет 1–3. WR по всем ролям; матчапы OpenDota — лиги.";
+        if (positionError is not null)
+        {
+            Status = "ВНИМАНИЕ: позиционная статистика недоступна. " +
+                positionError + " Контрпики OpenDota — отдельная выборка лиг.";
+            return;
+        }
+        var info = observed?.Description ?? "Нет позиционной статистики";
+        var warn = observed?.IsStale == true ? " [КЭШ УСТАРЕЛ]" : "";
+        Status = $"{info}{warn}. " +
+            (unavailable > 0 ? $"Частичные матчапы ({unavailable} недоступно). " : "") +
+            (!_statsAvailable || !baselinePresent ? "Общий WR недоступен. " : "") +
+            "Контрпики всей команды: OpenDota лиги; патч не отфильтрован.";
     }
 
     private async Task SavePreferencesAsync()
