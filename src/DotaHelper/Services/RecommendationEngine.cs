@@ -19,7 +19,8 @@ public sealed class RecommendationEngine
         int rankBracket = 0,
         HeroPoolMode pool = HeroPoolMode.Common,
         bool professionalMeta = false,
-        IReadOnlyDictionary<int, IReadOnlyList<PositionSample>>? observedPositions = null)
+        IReadOnlyDictionary<int, IReadOnlyList<PositionSample>>? observedPositions = null,
+        IReadOnlyDictionary<int, string>? matchupSources = null)
     {
         var alreadyPicked = allies.Concat(enemies)
             .Select(slot => slot.SelectedHero?.Id)
@@ -64,7 +65,19 @@ public sealed class RecommendationEngine
         var ranked = new List<Recommendation>();
         foreach (var hero in candidates)
         {
-            var counterDetails = new List<(string Name, double Rate, double Weight)>();
+            var counterDetails = new List<(string Name, double Edge, double Weight,
+                int Games, string Source)>();
+            // STRATZ rank-filtered matchups span all positions. Use the hero's
+            // overall winrate in that same bracket as a coarse baseline to
+            // avoid mistaking general hero strength for a specific counter.
+            double overallStratzBaseline = .5;
+            if (observed.TryGetValue(hero.Id, out var observedByPosition))
+            {
+                var total = observedByPosition.Sum(r => (long)r.Games);
+                var wins = observedByPosition.Sum(r => (long)r.Wins);
+                if (total >= 100 && wins >= 0 && wins <= total)
+                    overallStratzBaseline = (wins + 100.0) / (total + 200.0);
+            }
             double weightedEdge = 0;
             double possibleWeight = 0;
             int measured = 0;
@@ -94,8 +107,13 @@ public sealed class RecommendationEngine
                 // Convert into candidate's rate, then shrink toward 50%.
                 double candidateRate = (matchup.GamesPlayed - matchup.Wins + 50.0)
                                      / (matchup.GamesPlayed + 100.0);
-                weightedEdge += (candidateRate - 0.5) * weight;
-                counterDetails.Add((enemy.SelectedHero!.Name, candidateRate, weight));
+                var source = matchupSources?.GetValueOrDefault(enemyId) ?? "OpenDota";
+                var baseline = source.StartsWith("STRATZ", StringComparison.Ordinal)
+                    ? overallStratzBaseline : .5;
+                var edge = candidateRate - baseline;
+                weightedEdge += edge * weight;
+                counterDetails.Add((enemy.SelectedHero!.Name, edge, weight,
+                    matchup.GamesPlayed, source));
                 measured++;
                 games += matchup.GamesPlayed;
             }
@@ -179,15 +197,17 @@ public sealed class RecommendationEngine
                 $"общий WR {metaAdjustment:+0.0;-0.0;0.0}; " +
                 $"популярность {popularityAdjustment:+0.0;-0.0;0.0}; " +
                 $"избранное {(favorite ? "+4.0" : "0.0")}.";
-            string details = $"{roleLabel}. Контрпики: данные OpenDota о лигах, НЕ выбранный рейтинг. " +
-                "В расчёте участвуют все враги: керри/мид/оффлейн важнее, соперники по линии получают бонус. " +
-                "Это общие матчапы, а не показатели линии. Синергии и патч пока не учтены. " +
-                "Данные позиций STRATZ сгруппированы по двум соседним медалям.";
+            string details = $"{roleLabel}. Контрпики считаются против всей команды, " +
+                "керри/мид/оффлейн имеют больший вес, враги на линии — дополнительный. " +
+                "STRATZ матчи сгруппированы по двум соседним рангам; резервные данные OpenDota " +
+                "относятся к лигам. Позиции противников не проверяются в статистике матчапов. " +
+                "Ни позиции, ни матчапы пока не фильтруются по текущему патчу.";
             var counterSummary = counterDetails.Count == 0
                 ? "Контрпики: достоверных результатов по выбранным противникам нет."
                 : "Контрпики по всей команде (вклад в балл): " +
                   string.Join("; ", counterDetails.Select(x =>
-                      $"{x.Name} {((x.Rate - .5) * x.Weight / possibleWeight * 70):+0.0;-0.0;0.0}"));
+                      $"{x.Name}: {(x.Edge * x.Weight / possibleWeight * 70):+0.0;-0.0;0.0}" +
+                      $" ({x.Games:N0} матчей, {x.Source})"));
             ranked.Add(new Recommendation(hero, score, measured, pickedEnemies.Count,
                 games, favorite, details)
             {
