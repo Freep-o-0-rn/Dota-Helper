@@ -5,7 +5,8 @@
         Width="980" Height="665" MinWidth="760" MinHeight="520"
         Background="#101923" Foreground="#E6ECF3" FontFamily="Segoe UI"
         WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
-        PreviewKeyDown="Window_PreviewKeyDown">
+        PreviewKeyDown="Window_PreviewKeyDown"
+        PreviewTextInput="Window_PreviewTextInput">
     <Window.Resources>
         <Style x:Key="PickerBlankRepeat" TargetType="RepeatButton">
             <Setter Property="Template"><Setter.Value>
@@ -54,18 +55,41 @@
         </Style>
         <DataTemplate x:Key="HeroIcon">
             <Button Tag="{Binding}" Click="Hero_Click"
-                    ToolTip="{Binding Name}"
+                    ToolTip="{Binding Hero.Name}"
+                    ToolTipService.ShowOnDisabled="True"
                     Width="43" Height="53" Padding="0" Margin="2"
                     Background="#172532">
+                <Button.Style>
+                    <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+                        <Setter Property="Opacity" Value="1"/>
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding IsMatch}" Value="False">
+                                <Setter Property="IsEnabled" Value="False"/>
+                                <Setter Property="Opacity" Value=".42"/>
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Button.Style>
                 <Border CornerRadius="4" ClipToBounds="True"
                         BorderBrush="#3F5365" BorderThickness="1">
                     <Grid>
-                        <Image Source="{Binding PortraitUrl}"
+                        <Image Source="{Binding Hero.PortraitUrl}"
                                Stretch="UniformToFill"
                                RenderOptions.BitmapScalingMode="HighQuality"/>
-                        <TextBlock Text="?" Foreground="#7890A0"
-                                   HorizontalAlignment="Center" VerticalAlignment="Center"
-                                   FontSize="18"/>
+                        <!-- Grey neutral overlay only on nonmatching heroes. -->
+                        <Border Background="#B45B626A"
+                                IsHitTestVisible="False">
+                            <Border.Style>
+                                <Style TargetType="Border">
+                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsMatch}" Value="False">
+                                            <Setter Property="Visibility" Value="Visible"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Border.Style>
+                        </Border>
                     </Grid>
                 </Border>
             </Button>
@@ -81,7 +105,7 @@
         <DockPanel Margin="0,0,0,11">
             <TextBlock Text="ГЕРОИ" FontSize="19" FontWeight="Bold"
                        Foreground="#DDB775" VerticalAlignment="Center"/>
-            <TextBlock Text="  ·  нажми на портрет для выбора"
+            <TextBlock Text="  ·  печатай имя, несовпадения станут серыми"
                        FontSize="11" Foreground="#9CB0C1"
                        VerticalAlignment="Center"/>
         </DockPanel>
@@ -93,7 +117,7 @@
                      Background="#243547" BorderBrush="#3B586C" Foreground="White"
                      CaretBrush="White" FontSize="13" Padding="9,6"
                      TextChanged="SearchBox_TextChanged"
-                     ToolTip="Поиск по названию или внутреннему имени"/>
+                     ToolTip="Русские и английские названия, сокращения (вд, шд, легион), раскладка клавиатуры"/>
         </DockPanel>
         <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto"
                       HorizontalScrollBarVisibility="Disabled"
@@ -131,7 +155,7 @@
             </ItemsControl>
         </ScrollViewer>
         <DockPanel Grid.Row="3" Margin="0,10,0,0">
-            <TextBlock Text="Оригинальные портреты Valve · наведи курсор на героя"
+            <TextBlock Text="Вводи сразу · RU/EN · ВД, ШД, ЛЕГИОН · Enter при одном совпадении"
                        Foreground="#7F93A5" FontSize="11"
                        VerticalAlignment="Center"/>
             <Button Content="Отмена" Click="Cancel_Click"
