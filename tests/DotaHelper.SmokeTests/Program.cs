@@ -263,4 +263,10 @@ Check(new Hero { Id = 17, Name = "Test", InternalName = "npc_dota_hero_largo",
     ImagePath = "/apps/dota2/images/dota_react/heroes/largo.png" }
     .PortraitUrl.EndsWith("/heroes/largo.png"),
     "OpenDota image metadata must be supported");
-Console.WriteLine("Dota Helper 0.4.1 hero artwork and new hero tests passed.");
+var immortalData = new HeroStats { Id = 145, Picks7 = 500, Wins7 = 200,
+    Picks8 = 1000, Wins8 = 620 };
+Check(immortalData.InBracket(8) == (1000, 620),
+    "Immortal / Titan must have separate 8_pick/8_win");
+Check(new HeroStats().InBracket(8) == (0, 0),
+    "Missing Titan data must stay missing, never fall back to pooled ranks");
+Console.WriteLine("Dota Helper 0.4.1 hero artwork, Largo/Kez and Titan tests passed.");
