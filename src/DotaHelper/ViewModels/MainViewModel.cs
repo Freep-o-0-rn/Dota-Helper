@@ -129,7 +129,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
         try
         {
             var stats = await _api.GetHeroStatsAsync();
-            _heroStats = stats.GroupBy(s => s.Id)
+            _heroStats = stats.Where(s => s.EffectiveId > 0)
+                .GroupBy(s => s.EffectiveId)
                 .ToDictionary(g => g.Key, g => g.First());
             _statsAvailable = _heroStats.Count > 0;
         }
