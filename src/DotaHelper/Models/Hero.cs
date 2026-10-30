@@ -161,6 +161,7 @@ public sealed class DraftSlot : INotifyPropertyChanged
     private Hero? _selectedHero;
     private bool _isLaneOpponent;
     private int _enemyPosition;
+    private bool _isGsiConfirmed;
 
     public DraftSlot(string label, bool isEnemy = false, bool isPreview = false)
     {
@@ -171,7 +172,23 @@ public sealed class DraftSlot : INotifyPropertyChanged
 
     public bool IsEnemy { get; }
     public bool IsPreview { get; }
-    public string TileHint => IsPreview ? "Твой будущий пик (предпросмотр)" : Label;
+    public string TileHint => IsPreview
+        ? (IsGsiConfirmed ? "Твой герой подтверждён Dota 2 GSI" : "Твой будущий пик (предпросмотр)")
+        : Label;
+    public string PreviewText => IsGsiConfirmed ? "ТВОЙ ГЕРОЙ · GSI" : "ТВОЙ ПИК · ПРЕДПРОСМОТР";
+
+    public bool IsGsiConfirmed
+    {
+        get => _isGsiConfirmed;
+        set
+        {
+            if (_isGsiConfirmed == value) return;
+            _isGsiConfirmed = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(PreviewText));
+            OnPropertyChanged(nameof(TileHint));
+        }
+    }
 
     public string Label { get; }
 
