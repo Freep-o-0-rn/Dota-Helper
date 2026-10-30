@@ -1,7 +1,7 @@
 <Window x:Class="DotaHelper.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Dota Helper — Draft Assistant 0.2.1" Height="830" Width="1420"
+        Title="Dota Helper — Draft Assistant 0.3" Height="830" Width="1420"
         MinWidth="1120" MinHeight="670"
         Background="#10141D" Foreground="#E5EAF2"
         FontFamily="Segoe UI" Loaded="Window_Loaded">
@@ -44,7 +44,7 @@
                 <StackPanel>
                     <TextBlock Text="DOTA HELPER" FontSize="23" FontWeight="Bold"
                                Foreground="#D9B36F"/>
-                    <TextBlock Text="DRAFT ASSISTANT • ПРОТОТИП 0.2.1"
+                    <TextBlock Text="DRAFT ASSISTANT • ПРОТОТИП 0.3"
                                FontSize="11" Foreground="#A2ADBC"/>
                 </StackPanel>
             </DockPanel>
@@ -72,7 +72,7 @@
                                Foreground="#D9B36F" Margin="0,17,0,4"/>
                     <ComboBox IsEditable="False" ItemsSource="{Binding PoolOptions}"
                               SelectedItem="{Binding SelectedPool, Mode=TwoWay}"/>
-                    <TextBlock Text="Для поддержки (4/5) действует базовый пул. «Эксперимент» разрешает нестандартные пики."
+                    <TextBlock Text="Позиции 1–5 имеют отдельные пулы героев. «Эксперимент» показывает нестандартные пики."
                                Foreground="#A2ADBC" FontSize="11"
                                TextWrapping="Wrap" Margin="0,7,0,0"/>
 
@@ -87,7 +87,7 @@
                             Margin="0,17,0,17"/>
                     <TextBlock Text="ОГРАНИЧЕНИЯ" FontWeight="Bold"
                                Foreground="#D9B36F"/>
-                    <TextBlock Text="Пул поддержки составлен вручную. Общий WR не равен WR на позиции; текущий патч не учтён."
+                    <TextBlock Text="Пулы всех пяти позиций составлены вручную. Общий WR — не WR на выбранной роли. Текущий патч не учтён."
                                Foreground="#A2ADBC" FontSize="12" TextWrapping="Wrap"
                                Margin="0,8,0,0"/>
                 </StackPanel>
