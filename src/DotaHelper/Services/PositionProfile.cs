@@ -3,12 +3,52 @@ using DotaHelper.Models;
 namespace DotaHelper.Services;
 
 /// <summary>
-/// Conservative human-maintained candidate pools, NOT patch-specific pick/win data.
-/// Heroes absent from the lists can be viewed via the Experimental pool.
-/// Keys are Valve/OpenDota hero internal names, without "npc_dota_hero_" prefix.
+/// Human-maintained conservative candidate pools for ALL five positions.
+/// This is a temporary compatibility safeguard, NOT patch-based evidence,
+/// lane win rates, an exhaustive list, or a professional drafting tier list.
+/// Off-meta assignments can be explored via Experimental mode.
 /// </summary>
 public static class PositionProfile
 {
+    private static readonly HashSet<string> Carries = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "alchemist", "antimage", "arc_warden", "bloodseeker", "broodmother",
+        "chaos_knight", "clinkz", "drow_ranger", "faceless_void",
+        "gyrocopter", "juggernaut", "kez", "life_stealer", "lone_druid",
+        "luna", "medusa", "meepo", "monkey_king", "morphling",
+        "muerta", "naga_siren", "nevermore", "phantom_assassin",
+        "phantom_lancer", "razor", "riki", "skeleton_king", "slark",
+        "sniper", "spectre", "sven", "templar_assassin", "terrorblade",
+        "troll_warlord", "ursa", "weaver", "windrunner"
+    };
+
+    private static readonly HashSet<string> Midlaners = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "alchemist", "arc_warden", "batrider", "bloodseeker",
+        "broodmother", "clinkz", "death_prophet", "dragon_knight",
+        "ember_spirit", "huskar", "invoker", "keeper_of_the_light",
+        "kunkka", "leshrac", "lina", "lone_druid", "magnataur",
+        "meepo", "monkey_king", "morphling", "nevermore",
+        "obsidian_destroyer", "pangolier", "primal_beast", "puck",
+        "pugna", "queenofpain", "razor", "riki", "skywrath_mage",
+        "sniper", "storm_spirit", "templar_assassin", "tinker",
+        "tiny", "viper", "visage", "void_spirit", "windrunner", "zuus"
+    };
+
+    private static readonly HashSet<string> Offlaners = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "abyssal_underlord", "axe", "batrider", "beastmaster",
+        "brewmaster", "bristleback", "centaur", "chaos_knight",
+        "dark_seer", "dawnbreaker", "death_prophet", "doom_bringer",
+        "dragon_knight", "earthshaker", "elder_titan", "enigma",
+        "furion", "legion_commander", "lycan", "magnataur",
+        "mars", "necrolyte", "night_stalker", "omniknight",
+        "pangolier", "primal_beast", "pudge", "razor",
+        "sand_king", "shredder", "slardar", "spirit_breaker",
+        "tidehunter", "tiny", "undying", "venomancer",
+        "viper", "visage", "windrunner"
+    };
+
     private static readonly HashSet<string> SoftSupports = new(StringComparer.OrdinalIgnoreCase)
     {
         "abaddon", "ancient_apparition", "bane", "bounty_hunter", "chen",
@@ -40,12 +80,20 @@ public static class PositionProfile
 
     public static bool IsStandard(Hero hero, int position)
     {
-        if (position is not (4 or 5)) return true;
         const string prefix = "npc_dota_hero_";
         var name = hero.InternalName ?? "";
         var slug = name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
             ? name[prefix.Length..]
             : name;
-        return position == 4 ? SoftSupports.Contains(slug) : HardSupports.Contains(slug);
+
+        return position switch
+        {
+            1 => Carries.Contains(slug),
+            2 => Midlaners.Contains(slug),
+            3 => Offlaners.Contains(slug),
+            4 => SoftSupports.Contains(slug),
+            5 => HardSupports.Contains(slug),
+            _ => false
+        };
     }
 }
