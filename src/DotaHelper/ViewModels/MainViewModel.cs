@@ -12,6 +12,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
 {
     private readonly OpenDotaClient _api = new();
     private readonly StratzClient _positions = new();
+    private readonly DraftSlot _previewSlot = new("ТВОЙ ПИК", isPreview: true);
+    private DraftModeOption? _selectedDraftMode;
+    private TeamSideOption? _selectedSide;
     private readonly PatchInfoClient _patches = new();
     private readonly SteamProfileResolver _steam = new();
     private readonly RecommendationEngine _engine = new();
@@ -36,6 +39,77 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public ObservableCollection<Hero> Heroes { get; } = [];
     public ObservableCollection<DraftSlot> Allies { get; } = [];
     public ObservableCollection<DraftSlot> Enemies { get; } = [];
+    public ObservableCollection<BanSlot> AllPickBans { get; } = [];
+    public ObservableCollection<BanSlot> RadiantCaptainBans { get; } = [];
+    public ObservableCollection<BanSlot> DireCaptainBans { get; } = [];
+
+    public IReadOnlyList<DraftModeOption> DraftModes { get; } =
+    [
+        new(DraftGameMode.AllPick, "All Pick"),
+        new(DraftGameMode.CaptainsMode, "Captains Mode")
+    ];
+    public IReadOnlyList<TeamSideOption> TeamSides { get; } =
+    [
+        new(true, "Radiant"),
+        new(false, "Dire")
+    ];
+
+    public DraftModeOption? SelectedDraftMode
+    {
+        get => _selectedDraftMode;
+        set
+        {
+            if (value is null || Equals(_selectedDraftMode, value)) return;
+            _selectedDraftMode = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(IsAllPick));
+            OnPropertyChanged(nameof(IsCaptainsMode));
+            OnPropertyChanged(nameof(ActiveBans));
+            OnPropertyChanged(nameof(BanSummary));
+            DraftChanged?.Invoke(this, EventArgs.Empty);
+            _ = SavePreferencesAsync();
+        }
+    }
+    public TeamSideOption? SelectedSide
+    {
+        get => _selectedSide;
+        set
+        {
+            if (value is null || Equals(_selectedSide, value)) return;
+            _selectedSide = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(RadiantSlots));
+            OnPropertyChanged(nameof(DireSlots));
+            OnPropertyChanged(nameof(RadiantAreAllies));
+            OnPropertyChanged(nameof(DireAreAllies));
+            DraftChanged?.Invoke(this, EventArgs.Empty);
+            _ = SavePreferencesAsync();
+        }
+    }
+
+    public bool IsAllPick => SelectedDraftMode?.Mode != DraftGameMode.CaptainsMode;
+    public bool IsCaptainsMode => !IsAllPick;
+    public bool RadiantAreAllies => SelectedSide?.IsRadiant != false;
+    public bool DireAreAllies => !RadiantAreAllies;
+
+    public IReadOnlyList<DraftSlot> RadiantSlots => RadiantAreAllies
+        ? Allies.Append(_previewSlot).ToList() : Enemies.ToList();
+    public IReadOnlyList<DraftSlot> DireSlots => DireAreAllies
+        ? Allies.Append(_previewSlot).ToList() : Enemies.ToList();
+
+    public IEnumerable<BanSlot> ActiveBans => IsAllPick
+        ? AllPickBans : RadiantCaptainBans.Concat(DireCaptainBans);
+    public string BanSummary => IsAllPick
+        ? $"{AllPickBans.Count(b => b.SelectedHero is not null)}/{AllPickBans.Count} (общие)"
+        : $"{RadiantCaptainBans.Count(b => b.SelectedHero is not null)}/7 + " +
+          $"{DireCaptainBans.Count(b => b.SelectedHero is not null)}/7";
+
+    public void ClearBans()
+    {
+        foreach (var slot in ActiveBans)
+            slot.SelectedHero = null;
+    }
+
     public ObservableCollection<Recommendation> Recommendations { get; } = [];
     public ObservableCollection<Recommendation> VisibleRecommendations { get; } = [];
 
@@ -176,7 +250,22 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public MainViewModel()
     {
         for (var i = 1; i <= 4; i++) Allies.Add(new DraftSlot($"Союзник {i}"));
-        for (var i = 1; i <= 5; i++) Enemies.Add(new DraftSlot($"Противник {i}"));
+        for (var i = 1; i <= 5; i++) Enemies.Add(new DraftSlot($"Противник {i}", isEnemy: true));
+        // Matchwide bans in All Pick have no team attribution.
+        // Their displayed capacity follows the historically used 18-slot total,
+        // not the 4 preferences entered by a single player.
+        for (var i = 1; i <= 18; i++) AllPickBans.Add(new BanSlot(i));
+        for (var i = 1; i <= 7; i++)
+        {
+            RadiantCaptainBans.Add(new BanSlot(i));
+            DireCaptainBans.Add(new BanSlot(i));
+        }
+        foreach (var ban in AllPickBans.Concat(RadiantCaptainBans).Concat(DireCaptainBans))
+            ban.Changed += (_, _) =>
+            {
+                OnPropertyChanged(nameof(BanSummary));
+                DraftChanged?.Invoke(this, EventArgs.Empty);
+            };
         foreach (var slot in Allies.Concat(Enemies))
             slot.Changed += (_, _) =>
             {
@@ -187,6 +276,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
         _selectedRank = RankOptions[0];
         _selectedPool = PoolOptions[0];
         _selectedMeta = MetaOptions[0];
+        _selectedDraftMode = DraftModes[0];
+        _selectedSide = TeamSides[0];
     }
 
     public int SelectedPosition
@@ -243,7 +334,12 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public Recommendation? SelectedRecommendation
     {
         get => _selectedRecommendation;
-        set { _selectedRecommendation = value; OnPropertyChanged(); }
+        set
+        {
+            _selectedRecommendation = value;
+            _previewSlot.SelectedHero = value?.Hero;
+            OnPropertyChanged();
+        }
     }
 
     public event EventHandler? DraftChanged;
@@ -259,6 +355,10 @@ public sealed class MainViewModel : INotifyPropertyChanged
             ? PoolOptions[1] : PoolOptions[0];
         SelectedMeta = MetaOptions.FirstOrDefault(x => (int)x.Mode == _preferences.MetaMode)
                        ?? MetaOptions[0];
+        SelectedDraftMode = DraftModes.FirstOrDefault(x => x.Mode == _preferences.DraftMode)
+            ?? DraftModes[0];
+        SelectedSide = TeamSides.FirstOrDefault(x => x.IsRadiant == _preferences.PlayingRadiant)
+            ?? TeamSides[0];
         if (_preferences.PlayerAccountId is > 0)
             PlayerInput = _preferences.PlayerAccountId.Value.ToString();
 
@@ -317,9 +417,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     public void ClearDraft()
     {
-        // The existing UI debounce coalesces the slot-change events.
         foreach (var slot in Allies.Concat(Enemies))
             ClearSlot(slot);
+        ClearBans();
     }
 
     public async Task ToggleFavoriteAsync()
@@ -416,12 +516,19 @@ public sealed class MainViewModel : INotifyPropertyChanged
         if (revision != _revision) return;
 
         var priorSelectionId = SelectedRecommendation?.Hero.Id;
+        // Banned heroes cannot be recommended. Keep position/counter/synergy
+        // scoring unchanged, then filter only the ban selection.
+        var bannedIds = ActiveBans.Where(s => s.SelectedHero is not null)
+            .Select(s => s.SelectedHero!.Id).ToHashSet();
         var ranked = _engine.Rank(
             Heroes.ToList(), Allies.ToList(), Enemies.ToList(), SelectedPosition,
             _preferences.FavoriteHeroIds, matchups, _heroStats,
             SelectedRank?.Id ?? 0, SelectedPool?.Mode ?? HeroPoolMode.All,
             SelectedMeta?.Mode == MetaMode.Professional,
-            observed?.ByHero, matchupSources, synergies, synergySources);
+            observed?.ByHero, matchupSources, synergies, synergySources)
+            .Where(r => !bannedIds.Contains(r.Hero.Id))
+            .Select((r, index) => r with { PositionInRanking = index + 1 })
+            .ToList();
 
         Recommendations.Clear();
         foreach (var item in ranked) Recommendations.Add(item);
@@ -473,6 +580,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
             _preferences.SelectedRankBracket = SelectedRank?.Id ?? 0;
             _preferences.SelectedPoolMode = (int)(SelectedPool?.Mode ?? HeroPoolMode.All);
             _preferences.MetaMode = (int)(SelectedMeta?.Mode ?? MetaMode.PlayerRank);
+            _preferences.DraftMode = SelectedDraftMode?.Mode ?? DraftGameMode.AllPick;
+            _preferences.PlayingRadiant = SelectedSide?.IsRadiant != false;
             await _store.SaveAsync(_preferences);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
