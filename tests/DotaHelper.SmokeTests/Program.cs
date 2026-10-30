@@ -604,3 +604,50 @@ Check(calibration.Valid && !(calibration with {
     DirePicks = new ScreenArea(2000, 30, 500, 60) }).Valid,
     "Calibration must not accept regions outside the physical display");
 Console.WriteLine("Dota Helper 0.11 screenshot pick and ban recognition smoke tests passed.");
+
+
+// 0.12: auto matching must never treat gray pre-picks as locked heroes.
+using (var gray=new System.Drawing.Bitmap(72,56))
+using (var locked=new System.Drawing.Bitmap(72,56))
+{
+    for(int y=0;y<56;y++)
+    for(int x=0;x<72;x++)
+    {
+        var v=55+(x*7+y*13)%33;
+        gray.SetPixel(x,y,System.Drawing.Color.FromArgb(v-10,v-5,v+5));
+        locked.SetPixel(x,y,((x+y)%3==0)
+            ?System.Drawing.Color.FromArgb(135,67,167)
+            :System.Drawing.Color.FromArgb(70,82,141));
+    }
+    Check(!PortraitRecognition.IsConfirmedColor(gray),
+        "Blue-gray pre-pick must never become a confirmed pick");
+    Check(PortraitRecognition.IsConfirmedColor(locked),
+        "Colored purple hero must be accepted after lock-in");
+}
+using (var top=new System.Drawing.Bitmap(1280,720))
+{
+    using var g=System.Drawing.Graphics.FromImage(top);
+    g.Clear(System.Drawing.Color.FromArgb(18,25,37));
+    for(int team=0;team<2;team++)
+    for(int i=0;i<5;i++)
+    {
+        int x=(team==0?70:690)+i*94;
+        for(int yy=12;yy<57;yy+=3)
+        for(int xx=x;xx<x+77;xx+=3)
+        {
+            var color=(i+xx/3+yy/3)%3 switch
+            {
+                0=>System.Drawing.Brushes.CornflowerBlue,
+                1=>System.Drawing.Brushes.OrangeRed,
+                _=>System.Drawing.Brushes.DarkGoldenrod
+            };
+            g.FillRectangle(color,xx,yy,3,3);
+        }
+    }
+    var found=AutoDraftLayout.Locate(top);
+    Check(found is not null,
+        "Two independently positioned portrait strips should be found without calibration");
+    Check(!AutoDraftLayout.HasVisibleHeroGrid(top),
+        "Draft bar alone must not be mistaken for a gallery of banned heroes");
+}
+Console.WriteLine("Dota Helper 0.12 automatic window-layout and pre-pick classification tests passed.");
