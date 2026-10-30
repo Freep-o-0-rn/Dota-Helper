@@ -4,6 +4,7 @@ using System.Drawing.Imaging;
 using System.Net.Http;
 using System.Runtime.InteropServices;
 using System.Text.Json;
+using System.Text;
 using System.Windows.Forms;
 using DotaHelper.Models;
 
@@ -207,6 +208,22 @@ public sealed class ScreenDraftReader : IDisposable
         Directory.CreateDirectory(Path.GetDirectoryName(_config)!);
         File.WriteAllText(_config, JsonSerializer.Serialize(calibration));
         Calibration = calibration;
+    }
+
+    [DllImport("user32.dll")]
+    private static extern nint GetForegroundWindow();
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern int GetWindowText(nint hwnd, StringBuilder text, int count);
+
+    public static bool IsDotaForeground()
+    {
+        var hwnd = GetForegroundWindow();
+        if (hwnd == nint.Zero) return false;
+        var title = new StringBuilder(256);
+        GetWindowText(hwnd, title, title.Capacity);
+        return title.ToString().Contains("Dota 2",
+            StringComparison.OrdinalIgnoreCase);
     }
 
     public static Bitmap CapturePrimary()
