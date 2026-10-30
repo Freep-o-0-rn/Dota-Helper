@@ -1,0 +1,81 @@
+<Window x:Class="DotaHelper.HeroPickerWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Выбор героя" Width="440" Height="570" MinWidth="360" MinHeight="390"
+        Background="#101923" Foreground="#E6ECF3" FontFamily="Segoe UI"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
+        PreviewKeyDown="Window_PreviewKeyDown">
+    <Window.Resources>
+        <Style x:Key="HeroItem" TargetType="ListBoxItem">
+            <Setter Property="Padding" Value="2"/>
+            <Setter Property="Margin" Value="0,1"/>
+            <Setter Property="Background" Value="#1E2A38"/>
+            <Setter Property="Foreground" Value="#E7EDF4"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="#32485E"/>
+                </Trigger>
+                <Trigger Property="IsSelected" Value="True">
+                    <Setter Property="Background" Value="#335F61"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+        <Style TargetType="Button">
+            <Setter Property="Foreground" Value="#ECF2F6"/>
+            <Setter Property="Background" Value="#31465A"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="12,7"/>
+            <Setter Property="Cursor" Value="Hand"/>
+        </Style>
+    </Window.Resources>
+    <Grid Margin="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+        <TextBlock Text="ВЫБЕРИ ГЕРОЯ" FontWeight="Bold" FontSize="18"
+                   Foreground="#D8B777" Margin="0,0,0,10"/>
+        <TextBox x:Name="SearchBox" Grid.Row="1" Height="37" FontSize="14"
+                 Background="#253548" BorderBrush="#43566B" Foreground="White"
+                 CaretBrush="White" Padding="9,7" Margin="0,0,0,10"
+                 TextChanged="SearchBox_TextChanged"
+                 ToolTip="Введи имя героя и нажми Enter"/>
+        <ListBox x:Name="HeroList" Grid.Row="2" ItemContainerStyle="{StaticResource HeroItem}"
+                 Background="#14202C" BorderThickness="0"
+                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                 VirtualizingPanel.IsVirtualizing="True"
+                 VirtualizingPanel.VirtualizationMode="Recycling"
+                 KeyDown="HeroList_KeyDown"
+                 MouseDoubleClick="HeroList_MouseDoubleClick">
+            <ListBox.ItemTemplate>
+                <DataTemplate>
+                    <Grid Height="39" Margin="4,1">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="66"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <Border Width="58" Height="34" CornerRadius="4"
+                                Background="#172534" ClipToBounds="True"
+                                HorizontalAlignment="Left">
+                            <Image Source="{Binding PortraitUrl}" Stretch="UniformToFill"/>
+                        </Border>
+                        <TextBlock Grid.Column="1" Text="{Binding Name}" FontSize="13"
+                                   Foreground="#E8F1F7" VerticalAlignment="Center"
+                                   TextTrimming="CharacterEllipsis" Margin="8,0,0,0"/>
+                    </Grid>
+                </DataTemplate>
+            </ListBox.ItemTemplate>
+        </ListBox>
+        <DockPanel Grid.Row="3" Margin="0,12,0,0">
+            <Button DockPanel.Dock="Right" Content="Выбрать" Click="Choose_Click"
+                    Background="#3B7166" Margin="8,0,0,0"/>
+            <Button DockPanel.Dock="Right" Content="Отмена" Click="Cancel_Click"/>
+            <Button Content="Сбросить слот" Click="Clear_Click" Background="#553940"
+                    HorizontalAlignment="Left"/>
+        </DockPanel>
+    </Grid>
+</Window>
