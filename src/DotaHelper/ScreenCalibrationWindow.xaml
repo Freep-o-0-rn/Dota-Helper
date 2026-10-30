@@ -1,0 +1,58 @@
+<Window x:Class="DotaHelper.ScreenCalibrationWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Dota Helper — настройка экранного распознавания"
+        Width="1260" Height="800" MinWidth="770" MinHeight="550"
+        Background="#111B27" Foreground="#E8EFF4" FontFamily="Segoe UI"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False">
+    <Grid Margin="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+        <StackPanel Margin="0,0,0,10">
+            <TextBlock Text="РАЗМЕТКА ЭКРАНА DOTA 2" FontWeight="Bold"
+                       FontSize="17" Foreground="#DDB675"/>
+            <TextBlock x:Name="Instruction" Margin="0,5,0,0" FontSize="12"
+                       Foreground="#C8DBE7" TextWrapping="Wrap"/>
+        </StackPanel>
+        <Border Grid.Row="1" Background="#060A10"
+                BorderBrush="#43576B" BorderThickness="1" CornerRadius="7"
+                ClipToBounds="True">
+            <Viewbox Stretch="Uniform" HorizontalAlignment="Stretch"
+                     VerticalAlignment="Stretch">
+                <Canvas x:Name="Surface" Background="#101820"
+                        MouseLeftButtonDown="Surface_Down"
+                        MouseMove="Surface_Move"
+                        MouseLeftButtonUp="Surface_Up">
+                    <Image x:Name="ScreenImage" Stretch="Fill"
+                           IsHitTestVisible="False"/>
+                    <Rectangle x:Name="RadiantRectangle" Stroke="#46D5B2"
+                               StrokeThickness="5" Fill="#2022AA85"
+                               IsHitTestVisible="False" Visibility="Collapsed"/>
+                    <Rectangle x:Name="DireRectangle" Stroke="#F07B94"
+                               StrokeThickness="5" Fill="#20E26D87"
+                               IsHitTestVisible="False" Visibility="Collapsed"/>
+                    <Rectangle x:Name="BansRectangle" Stroke="#E3B669"
+                               StrokeThickness="5" Fill="#20CBA25C"
+                               IsHitTestVisible="False" Visibility="Collapsed"/>
+                    <Rectangle x:Name="SelectionRectangle" Stroke="White"
+                               StrokeThickness="5" Fill="#20E8F3FF"
+                               IsHitTestVisible="False" Visibility="Collapsed"/>
+                </Canvas>
+            </Viewbox>
+        </Border>
+        <DockPanel Grid.Row="2" Margin="0,11,0,0">
+            <Button DockPanel.Dock="Right" Content="Отмена" Click="Cancel_Click"
+                    Padding="14,7" Margin="10,0,0,0" Background="#415267"
+                    Foreground="White"/>
+            <Button x:Name="SaveButton" DockPanel.Dock="Right" Content="Сохранить области"
+                    Click="Save_Click" Padding="14,7" IsEnabled="False"
+                    Background="#347663" Foreground="White"/>
+            <TextBlock Text="Выделяй мышью прямоугольники. Пики: весь ряд из 5 портретов. Баны: область сетки героев."
+                       Foreground="#92A8BB" FontSize="11" VerticalAlignment="Center"
+                       TextWrapping="Wrap"/>
+        </DockPanel>
+    </Grid>
+</Window>
