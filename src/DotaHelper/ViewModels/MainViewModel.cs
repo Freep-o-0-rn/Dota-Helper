@@ -37,9 +37,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
     ];
     public IReadOnlyList<PoolOption> PoolOptions { get; } =
     [
-        new(HeroPoolMode.Common, "Стандартные, без редких"),
-        new(HeroPoolMode.All, "Все подходящие для роли"),
-        new(HeroPoolMode.Favorites, "Подходящие избранные"),
+        new(HeroPoolMode.Common, "Без редких (4/5: стандарт)"),
+        new(HeroPoolMode.All, "Все (4/5: стандарт)"),
+        new(HeroPoolMode.Favorites, "Избранные (4/5: стандарт)"),
         new(HeroPoolMode.Experimental, "Эксперимент: все герои")
     ];
 
