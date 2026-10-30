@@ -306,4 +306,52 @@ try
 }
 catch (System.Xml.XmlException) { }
 
-Console.WriteLine("Dota Helper 0.7 allied synergy and vanity URL regression tests passed.");
+var patchFixture = """
+{
+  "patches":[
+    {"patch_number":"7.41f","patch_timestamp":1789455600},
+    {"patch_number":"7.41e","patch_timestamp":1785394800},
+    {"patch_number":"7.41","patch_timestamp":1774335600}
+  ],"success":true
+}
+""";
+var patch = PatchInfoClient.Parse(patchFixture);
+Check(patch.Number == "7.41f" && patch.DisplayLabel.Contains("7.41f"),
+    "Official Valve patch feed parser must identify newest patch");
+Check(PatchInfoClient.Parse(patchFixture, true).FromStaleCache,
+    "Stale Valve patch list must be disclosed");
+var reversed = """{"patches":[
+ {"patch_number":"7.41","patch_timestamp":1774335600},
+ {"patch_number":"7.41f","patch_timestamp":1789455600}
+]}""";
+Check(PatchInfoClient.Parse(reversed).Number == "7.41f",
+    "Patch parser must sort by published UTC timestamp, not list position");
+try
+{
+    _ = PatchInfoClient.Parse("""{"patches":[{"patch_number":"x","patch_timestamp":999999999999}]}""");
+    throw new Exception("Out-of-range future patch must be rejected");
+}
+catch (JsonException) { }
+
+// A 20-game extreme matchup must not dominate the draft.
+var oneEnemy = new DraftSlot("Enemy") {
+    SelectedHero = enemyCarry, EnemyPosition = 1
+};
+var tinyExtreme = new Dictionary<int, IReadOnlyList<Matchup>> {
+    [enemyCarry.Id] = [new Matchup { HeroId = 145, GamesPlayed = 20, Wins = 0 }]
+};
+var largeExtreme = new Dictionary<int, IReadOnlyList<Matchup>> {
+    [enemyCarry.Id] = [new Matchup { HeroId = 145, GamesPlayed = 2000, Wins = 0 }]
+};
+Recommendation ScoreMatchup(IReadOnlyDictionary<int, IReadOnlyList<Matchup>> m) =>
+    engine.Rank([kez], [], [oneEnemy], 1, new HashSet<int>(), m,
+        null, 0, HeroPoolMode.All, observedPositions: samples)[0];
+var lowEvidence = ScoreMatchup(tinyExtreme);
+var highEvidence = ScoreMatchup(largeExtreme);
+Check(highEvidence.Score > lowEvidence.Score,
+    "Reliable 2000-game extreme counter should outweigh 20-game result");
+Check(highEvidence.ReliabilityLabel.Contains("высокая") &&
+      lowEvidence.ReliabilityLabel.Contains("низкая"),
+    "Show quality based on weighted sample size and matchup coverage");
+
+Console.WriteLine("Dota Helper 0.8 patch and evidence confidence tests passed.");
