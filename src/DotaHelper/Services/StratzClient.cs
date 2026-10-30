@@ -356,6 +356,122 @@ public sealed class StratzClient
         return aggregate.Values.ToArray();
     }
 
+
+    /// <summary>
+    /// STRATZ matchUp.with: observed results when the queried hero and
+    /// candidate are teammates. No invented synergy when data unavailable.
+    /// </summary>
+    public async Task<(IReadOnlyList<Matchup> Rows, bool Stale)> GetSynergiesAsync(
+        int allyHeroId, int rank, bool professional)
+    {
+        if (allyHeroId <= 0) throw new ArgumentOutOfRangeException(nameof(allyHeroId));
+        var bracket = BracketName(rank, professional);
+        Directory.CreateDirectory(_cacheDirectory);
+        var path = Path.Combine(_cacheDirectory, $"stratz-synergy-{allyHeroId}-{bracket}.json");
+
+        async Task<(IReadOnlyList<Matchup>, bool)?> ReadCache(bool stale)
+        {
+            try
+            {
+                if (!File.Exists(path)) return null;
+                var parsed = ParseSynergies(await File.ReadAllTextAsync(path), allyHeroId);
+                return parsed.Count > 0 ? (parsed, stale) : null;
+            }
+            catch (Exception ex) when (ex is IOException or JsonException or UnauthorizedAccessException)
+            {
+                return null;
+            }
+        }
+
+        if (File.Exists(path) &&
+            DateTime.UtcNow - File.GetLastWriteTimeUtc(path) < TimeSpan.FromHours(6))
+        {
+            var cached = await ReadCache(false);
+            if (cached.HasValue) return cached.Value;
+        }
+
+        var token = NormalizeToken(Environment.GetEnvironmentVariable("STRATZ_API_TOKEN"));
+        if (string.IsNullOrWhiteSpace(token))
+        {
+            var cached = await ReadCache(true);
+            if (cached.HasValue) return cached.Value;
+            throw new InvalidOperationException("Нет STRATZ_API_TOKEN для синергий.");
+        }
+
+        // Shared gate prevents too many concurrent STRATZ GraphQL requests.
+        await _matchupGate.WaitAsync();
+        try
+        {
+            if (File.Exists(path) &&
+                DateTime.UtcNow - File.GetLastWriteTimeUtc(path) < TimeSpan.FromHours(6))
+            {
+                var cached = await ReadCache(false);
+                if (cached.HasValue) return cached.Value;
+            }
+            var filter = bracket == "ALL" ? "" : $", bracketBasicIds: [{bracket}]";
+            var query = "query { heroStats { matchUp(heroId: " +
+                allyHeroId + filter +
+                ", take: 200) { with { heroId2 winCount matchCount } } } }";
+            using var request = CreateGraphQlRequest(token, query);
+            using var response = await Http.SendAsync(request);
+            await CheckHttpResponseAsync(response);
+            var json = await response.Content.ReadAsStringAsync();
+            var result = ParseSynergies(json, allyHeroId);
+            if (result.Count == 0)
+                throw new InvalidOperationException("STRATZ не вернул статистику совместных игр.");
+            try { await File.WriteAllTextAsync(path, json); }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+            return (result, false);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException
+            or JsonException or InvalidOperationException)
+        {
+            var cached = await ReadCache(true);
+            if (cached.HasValue) return cached.Value;
+            if (ex is InvalidOperationException) throw;
+            throw new InvalidOperationException("Не удалось получить синергии STRATZ.", ex);
+        }
+        finally { _matchupGate.Release(); }
+    }
+
+    public static IReadOnlyList<Matchup> ParseSynergies(string json, int queriedHeroId)
+    {
+        using var document = JsonDocument.Parse(json);
+        if (document.RootElement.TryGetProperty("errors", out var errors) &&
+            errors.ValueKind == JsonValueKind.Array && errors.GetArrayLength() > 0)
+            throw new JsonException("STRATZ вернул ошибку GraphQL with.");
+        if (!document.RootElement.TryGetProperty("data", out var data) ||
+            !data.TryGetProperty("heroStats", out var stats) ||
+            !stats.TryGetProperty("matchUp", out var groups) ||
+            groups.ValueKind != JsonValueKind.Array)
+            throw new JsonException("Некорректный ответ STRATZ with.");
+        var output = new Dictionary<int, Matchup>();
+        foreach (var group in groups.EnumerateArray())
+        {
+            if (!group.TryGetProperty("with", out var teammates) ||
+                teammates.ValueKind != JsonValueKind.Array) continue;
+            foreach (var row in teammates.EnumerateArray())
+            {
+                if (!row.TryGetProperty("heroId2", out var hero) ||
+                    !row.TryGetProperty("matchCount", out var count) ||
+                    !row.TryGetProperty("winCount", out var wins) ||
+                    hero.ValueKind != JsonValueKind.Number ||
+                    count.ValueKind != JsonValueKind.Number ||
+                    wins.ValueKind != JsonValueKind.Number) continue;
+
+                var id = hero.GetInt32();
+                var played = count.GetInt32();
+                var won = wins.GetInt32();
+                if (id <= 0 || id == queriedHeroId || played < 30 ||
+                    won < 0 || won > played) continue;
+                if (!output.TryGetValue(id, out var previous) ||
+                    previous.GamesPlayed < played)
+                    output[id] = new Matchup { HeroId = id, GamesPlayed = played, Wins = won };
+            }
+        }
+        return output.Values.ToArray();
+    }
+
     // Public so deterministic tests can validate real API schema without a token.
     public static IReadOnlyList<PositionSample> Parse(string json)
     {
