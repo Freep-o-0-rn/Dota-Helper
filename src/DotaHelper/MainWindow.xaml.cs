@@ -60,6 +60,34 @@ public partial class MainWindow : Window
     private void ClearSearch_Click(object sender, RoutedEventArgs e) =>
         _viewModel.ClearRecommendationSearch();
 
+    private void PickHero_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { Tag: DraftSlot slot } || slot.IsPreview) return;
+        var picker = new HeroPickerWindow(
+            _viewModel.Heroes, slot.IsEnemy ? "Пик противника" : "Пик союзника",
+            slot.SelectedHero) { Owner = this };
+        if (picker.ShowDialog() == true)
+            slot.SelectedHero = picker.SelectedHero;
+    }
+
+    private void PickBan_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { Tag: BanSlot slot }) return;
+        var picker = new HeroPickerWindow(
+            _viewModel.Heroes, "Забаненный герой", slot.SelectedHero)
+        { Owner = this };
+        if (picker.ShowDialog() == true)
+            slot.SelectedHero = picker.SelectedHero;
+    }
+
+    private void ClearBans_Click(object sender, RoutedEventArgs e)
+    {
+        if (MessageBox.Show(this, "Очистить список банов?",
+            "Очистка банов", MessageBoxButton.YesNo, MessageBoxImage.Question)
+            == MessageBoxResult.Yes)
+            _viewModel.ClearBans();
+    }
+
     private async void ToggleFavorite_Click(object sender, RoutedEventArgs e) =>
         await _viewModel.ToggleFavoriteAsync();
 
