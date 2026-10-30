@@ -37,7 +37,8 @@ public sealed class OpenDotaClient
         }
         finally
         {
-            _inflight.TryRemove(new KeyValuePair<int, Task<IReadOnlyList<Matchup>>>(enemyHeroId, task));
+            if (_inflight.TryGetValue(enemyHeroId, out var current) && ReferenceEquals(current, task))
+                _inflight.TryRemove(enemyHeroId, out _);
         }
     }
 
