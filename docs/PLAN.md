@@ -4,6 +4,16 @@
 
 Dota drafting assistant first, tactical observer later. Never read hidden game memory or automate gameplay.
 
+## 0.4 — full enemy team priority (implemented)
+
+- Enemy role in each slot is manually selected (0 unknown; 1 carry; 2 mid; 3 offlane; 4/5 support).
+- Every selected enemy matchup contributes to counterpick scoring. Base weights: cores 1.7, supports 1.0, unknowns 1.2; lane opponents multiply weight by 1.25.
+- Missing matchup data is neutral; do not imply an observed lane outcome. Show per-enemy score contributions and clear source limitations.
+- Pool UI has exactly two modes: standard by role (no popularity cutoff), experimental (all heroes).
+- OpenDota public account lookup suggests a rank tier; manual override remains, and Immortal lacks a dedicated bracket in the current heroStats UI.
+- Professional baseline uses pro_pick/pro_win, never a silent fallback to the ranked aggregate. Counterpick data is still league-based and shared between modes.
+- Test weights, meta separation and missing-data behavior before further algorithm tuning.
+
 ## 0.3 — all five positions (implemented)
 
 - Position 1: carry, position 2: mid, position 3: offlane, position 4: soft support, position 5: hard support.
