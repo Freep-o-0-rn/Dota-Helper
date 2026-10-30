@@ -224,4 +224,32 @@ Check(summary.Contains("Enemy Carry") && summary.Contains("Enemy Support"),
 Check(new DraftSlot("Unknown").EnemyPosition == 0,
     "New enemies must have unknown roles by default");
 
-Console.WriteLine("Dota Helper 0.4 core-priority counterpick tests passed.");
+// Professional mode reads pro_pick/pro_win separately from ranked brackets.
+var metaCandidateA = new Hero { Id = 501, Name = "Pro A", InternalName = "npc_dota_hero_luna" };
+var metaCandidateB = new Hero { Id = 502, Name = "Pro B", InternalName = "npc_dota_hero_juggernaut" };
+var distinctMeta = new Dictionary<int, HeroStats>
+{
+    [501] = new HeroStats { Id = 501, Picks4 = 2000, Wins4 = 800,
+        ProPicks = 500, ProWins = 330 },
+    [502] = new HeroStats { Id = 502, Picks4 = 2000, Wins4 = 1300,
+        ProPicks = 500, ProWins = 180 }
+};
+var rankedMeta = engine.Rank([metaCandidateA, metaCandidateB], [], [], 1,
+    new HashSet<int>(), new Dictionary<int, IReadOnlyList<Matchup>>(),
+    distinctMeta, 4, HeroPoolMode.All, professionalMeta: false);
+var professionalMeta = engine.Rank([metaCandidateA, metaCandidateB], [], [], 1,
+    new HashSet<int>(), new Dictionary<int, IReadOnlyList<Matchup>>(),
+    distinctMeta, 4, HeroPoolMode.All, professionalMeta: true);
+Check(rankedMeta[0].Hero.Id == 502, "Ranked meta must use bracket stats");
+Check(professionalMeta[0].Hero.Id == 501, "Pro meta must use pro stats, not ranked");
+Check(professionalMeta[0].MetaLabel.StartsWith("Профи:"),
+    "Pro winrates must identify professional data source");
+var noPro = engine.Rank([metaCandidateA], [], [], 1, new HashSet<int>(),
+    new Dictionary<int, IReadOnlyList<Matchup>>(),
+    new Dictionary<int, HeroStats> {
+        [501] = new HeroStats { Id = 501, Picks4 = 1000, Wins4 = 700 }
+    }, 4, HeroPoolMode.All, professionalMeta: true);
+Check(noPro[0].MetaLabel.Contains("нет данных"),
+    "Professional mode must never silently fall back to ranked statistics");
+
+Console.WriteLine("Dota Helper 0.4 core-priority and meta-mode tests passed.");
