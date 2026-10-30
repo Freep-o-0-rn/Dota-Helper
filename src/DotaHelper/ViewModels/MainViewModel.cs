@@ -301,6 +301,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
         var revision = ++_revision;
         var selectedEnemies = Enemies.Where(s => s.SelectedHero is not null)
             .Select(s => s.SelectedHero!.Id).Distinct().ToList();
+        var selectedAllies = Allies.Where(s => s.SelectedHero is not null)
+            .Select(s => s.SelectedHero!.Id).Distinct().ToList();
 
         Status = "Получение позиций и матчапов по выбранному рангу...";
 
@@ -335,8 +337,31 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 }
             }
         }).ToArray();
+        var allyTasks = selectedAllies.Select(async allyId =>
+        {
+            try
+            {
+                var (rows, stale) = await _positions.GetSynergiesAsync(
+                    allyId, rank, professional);
+                return (Id: allyId, Rows: rows,
+                    Origin: stale ? "STRATZ-кэш" : "STRATZ", Error: false);
+            }
+            catch
+            {
+                // Unlike enemy matchups, OpenDota has no matching ally
+                // synergy endpoint. Missing samples are neutral.
+                return (Id: allyId, Rows: (IReadOnlyList<Matchup>)[],
+                    Origin: "Недоступно", Error: true);
+            }
+        }).ToArray();
+
         var results = await Task.WhenAll(counterTasks);
+        var alliesFound = await Task.WhenAll(allyTasks);
         if (revision != _revision) return;
+        var synergies = alliesFound.Where(r => !r.Error)
+            .ToDictionary(r => r.Id, r => r.Rows);
+        var synergySources = alliesFound.Where(r => !r.Error)
+            .ToDictionary(r => r.Id, r => r.Origin);
         var matchups = results.Where(r => !r.Error)
             .ToDictionary(r => r.Id, r => r.Data);
         var matchupSources = results.Where(r => !r.Error)
@@ -360,7 +385,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             _preferences.FavoriteHeroIds, matchups, _heroStats,
             SelectedRank?.Id ?? 0, SelectedPool?.Mode ?? HeroPoolMode.All,
             SelectedMeta?.Mode == MetaMode.Professional,
-            observed?.ByHero, matchupSources);
+            observed?.ByHero, matchupSources, synergies, synergySources);
 
         Recommendations.Clear();
         foreach (var item in ranked) Recommendations.Add(item);
@@ -388,10 +413,14 @@ public sealed class MainViewModel : INotifyPropertyChanged
             return;
         }
         var info = observed?.Description ?? "Нет позиционной статистики";
+        var synergiesAvailable = alliesFound.Count(r => !r.Error);
         var sources = selectedEnemies.Count == 0 ? "Врагов нет"
             : $"Контрпики: STRATZ {results.Count(r => r.Origin.StartsWith("STRATZ"))}" +
               $", OpenDota {results.Count(r => r.Origin.StartsWith("OpenDota"))}";
         Status = $"{info}. {sources}. " +
+            (selectedAllies.Count > 0
+                ? $"Синергии STRATZ: {synergiesAvailable}/{selectedAllies.Count} союзников. "
+                : "") +
             (unavailable > 0 ? $"Неизвестные матчапы: {unavailable}. " : "") +
             (!_statsAvailable || !baselinePresent ? "Общая мета недоступна. " : "") +
             "Роли и матчапы сгруппированы по рангу; фильтр текущего патча не применяется.";
