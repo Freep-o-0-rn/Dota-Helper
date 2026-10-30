@@ -105,68 +105,103 @@ public static class AutoDraftLayout
 
     public static (ScreenArea Radiant, ScreenArea Dire, ScreenArea Bans)? Locate(Bitmap screen)
     {
-        var w=screen.Width; var h=screen.Height;
-        if(w<800 || h<480) return null;
-        var top=Math.Clamp((int)(h*.072),35,96);
-        var y=Math.Clamp((int)(h*.013),3,22);
-        var bottom=Math.Min(top,h-1);
-        if(bottom-y<20) return null;
+        int w = screen.Width, h = screen.Height;
+        if (w < 800 || h < 480) return null;
 
-        // Horizontal texture+color score at the top, sampled sparsely for
-        // fast scanning. Dense portrait rows score higher than HUD background.
-        var energy=new double[w];
-        for(int x=0;x<w;x+=3)
+        // Crop away HUD labels/player names. The portrait faces live between
+        // approximately 1% and 6.6% of the screen height on current All Pick.
+        // Both offsets and portrait pitch are detected anew on every frame.
+        int y0 = Math.Clamp((int)(h * .008), 3, 20);
+        int y1 = Math.Min((int)(h * .066), 84);
+        if (y1 - y0 < 25) return null;
+        var signal = new double[w];
+
+        for (int x = 2; x < w - 2; x++)
         {
-            double score=0;var prev=screen.GetPixel(x,y+2);
-            for(int yy=y+5; yy<bottom; yy+=5)
+            double saturated = 0, sum = 0, sumSquared = 0;
+            int n = 0;
+            for (int y = y0; y < y1; y += 3)
             {
-                var c=screen.GetPixel(x,yy);
-                var diff=Math.Abs(c.R-prev.R)+Math.Abs(c.G-prev.G)+Math.Abs(c.B-prev.B);
-                score+=Math.Min(240,diff);
-                prev=c;
+                var c = screen.GetPixel(x, y);
+                var high = Math.Max(c.R, Math.Max(c.G, c.B));
+                var low = Math.Min(c.R, Math.Min(c.G, c.B));
+                if (high > 65 && high - low > 42) saturated++;
+                var brightness = (c.R + c.G + c.B) / 3.0;
+                sum += brightness;
+                sumSquared += brightness * brightness;
+                n++;
             }
-            energy[x]=score;
+            if (n == 0) continue;
+            var variance = Math.Sqrt(Math.Max(0, sumSquared / n -
+                (sum / n) * (sum / n)));
+            signal[x] = saturated / n + variance / 255d;
         }
-        // Smooth away thin HUD bars and text.
-        var integral=new double[w+1];
-        for(int i=0;i<w;i++) integral[i+1]=integral[i]+energy[i];
 
-        (int Start,int Step,int Cell,double Score)? Find(int from, int to)
+        // Smooth per-column scores, then compare textured portrait interiors
+        // against the lower-energy gaps. A five-cell periodic pattern is
+        // required, preventing isolated UI icons or the timer from matching.
+        var prefix = new double[w + 1];
+        for (int x = 0; x < w; x++)
         {
-            var best=(Start:0,Step:0,Cell:0,Score:0d);
-            for(double scale=.045;scale<=.072;scale+=.004)
+            var smoothed = (signal[Math.Max(0, x - 2)] +
+                signal[Math.Max(0, x - 1)] + signal[x] +
+                signal[Math.Min(w - 1, x + 1)] +
+                signal[Math.Min(w - 1, x + 2)]) / 5.0;
+            prefix[x + 1] = prefix[x] + smoothed;
+        }
+
+        double Mean(int l, int r)
+        {
+            l = Math.Clamp(l, 0, w);
+            r = Math.Clamp(r, 0, w);
+            return r > l ? (prefix[r] - prefix[l]) / (r - l) : 0;
+        }
+
+        (int X, int Pitch, double Score)? Find(bool radiant)
+        {
+            int minX = (int)(w * (radiant ? .07 : .53));
+            int endX = (int)(w * (radiant ? .47 : .96));
+            (int X, int Pitch, double Score)? best = null;
+
+            for (int pitch = (int)(w * .053); pitch <= (int)(w * .075); pitch += 2)
             {
-                var step=(int)(w*scale);
-                var cell=(int)(step*.86);
-                if(step<30 || cell<25) continue;
-                for(var x=from;x+4*step+cell<to;x+=Math.Max(3,step/10))
+                var cell = (int)(pitch * .86);
+                if (pitch < 32 || cell < 26) continue;
+                for (int x = minX; x + pitch * 4 + cell < endX; x += 2)
                 {
-                    double total=0;
-                    for(int i=0;i<5;i++)
+                    double inside = 0, between = 0, smallest = double.MaxValue;
+                    int textured = 0;
+                    for (int i = 0; i < 5; i++)
                     {
-                        var l=x+i*step+cell/7;
-                        var r=x+i*step+cell-cell/7;
-                        total+=(integral[Math.Min(w,r)]-integral[Math.Max(0,l)])
-                            /Math.Max(1,r-l);
+                        var left = x + i * pitch;
+                        var rich = Mean(left + 5, left + cell - 4);
+                        inside += rich;
+                        smallest = Math.Min(smallest, rich);
+                        if (rich >= .20) textured++;
+                        if (i < 4) between += Mean(left + cell, left + pitch);
                     }
-                    // favor consistent rows instead of one intense effect.
-                    if(total>best.Score)
-                        best=(x,step,cell,total);
+                    // At least three visible portraits are needed to
+                    // establish a layout in draft phase. Blank slots do not
+                    // by themselves prove pre-picks.
+                    if (textured < 3) continue;
+                    var score = inside / 5 - .60 * between / 4 + .03 * smallest;
+                    if (score > .30 && (best is null || score > best.Value.Score))
+                        best = (x, pitch, score);
                 }
             }
-            return best.Score>125 ? best : null;
+            return best;
         }
-        // Don't assume each team's HUD anchors are symmetric or at 5%/95%.
-        var left=Find(0,(int)(w*.48));
-        var right=Find((int)(w*.47),w);
-        if(left is null || right is null) return null;
-        var l=left.Value;var r=right.Value;
-        var leftArea=new ScreenArea(l.Start,y,4*l.Step+l.Cell,bottom-y);
-        var rightArea=new ScreenArea(r.Start,y,4*r.Step+r.Cell,bottom-y);
-        // The grid may be in a 4-column attribute view, a 2-column role
-        // view, or absent (strategy screen). Do not assume a fixed grid.
-        var banArea=new ScreenArea((int)(w*.015),(int)(h*.13),
-            (int)(w*.97),(int)(h*.76));
-        return (leftArea,rightArea,banArea);
+
+        var left = Find(true);
+        var right = Find(false);
+        if (left is null || right is null) return null;
+        var a = left.Value;
+        var b = right.Value;
+        var radiantArea = new ScreenArea(a.X, y0, a.Pitch * 5, y1 - y0);
+        var direArea = new ScreenArea(b.X, y0, b.Pitch * 5, y1 - y0);
+
+        var gallery = new ScreenArea((int)(w * .015), (int)(h * .13),
+            (int)(w * .97), (int)(h * .76));
+        return (radiantArea, direArea, gallery);
     }
 }
