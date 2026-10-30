@@ -35,7 +35,9 @@ public sealed record RecognizedHero(int HeroId, double Confidence);
 public sealed record ScreenDraftObservation(
     IReadOnlyList<RecognizedHero?> RadiantPicks,
     IReadOnlyList<RecognizedHero?> DirePicks,
-    IReadOnlyList<RecognizedHero> BannedHeroes);
+    IReadOnlyList<RecognizedHero> BannedHeroes,
+    int RadiantPrePicks = 0,
+    int DirePrePicks = 0);
 
 /// <summary>
 /// Pure managed template similarity for the 10 on-screen pick rectangles and
@@ -76,6 +78,29 @@ public static class PortraitRecognition
         for (var i = 0; i < values.Length; i++)
             values[i] /= norm;
         return values;
+    }
+
+    /// <summary>
+    /// A gray/pre-pick portrait has almost no saturated, bright pixels.
+    /// Count only bright saturation: colored HUD borders cannot make a
+    /// genuinely gray portrait look confirmed.
+    /// </summary>
+    public static bool IsConfirmedColor(Bitmap image)
+    {
+        int vivid=0,total=0;
+        int left=image.Width/8, right=image.Width*7/8;
+        int top=image.Height/7, bottom=image.Height*6/7;
+        for(int y=top;y<bottom;y+=2)
+        for(int x=left;x<right;x+=2)
+        {
+            var c=image.GetPixel(x,y);
+            var high=Math.Max(c.R,Math.Max(c.G,c.B));
+            var low=Math.Min(c.R,Math.Min(c.G,c.B));
+            if(high>70 && high-low>48 && (high-low)*100/Math.Max(1,high)>36)
+                vivid++;
+            total++;
+        }
+        return total>0 && vivid/(double)total>.15;
     }
 
     public static double Similarity(double[] a, double[] b)
@@ -183,6 +208,10 @@ public sealed class ScreenDraftReader : IDisposable
 {
     private readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(10) };
     private readonly Dictionary<int, double[]> _templates = [];
+    private readonly Dictionary<int, List<double[]>> _variants = [];
+    private readonly string _templateDir = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "DotaHelper", "portrait-cache");
     private readonly string _config = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "DotaHelper", "screen-calibration.json");
@@ -237,31 +266,103 @@ public sealed class ScreenDraftReader : IDisposable
         return bmp;
     }
 
+    /// <summary>
+    /// Load official Valve horizontal and portrait-crop variants once.
+    /// Cache locally: subsequent startups do not download 127 portraits.
+    /// </summary>
     public async Task<int> LoadPortraitsAsync(IEnumerable<Hero> heroes,
         IProgress<int>? progress = null, CancellationToken ct = default)
     {
-        var all = heroes.Where(h=>h.Id>0 && !string.IsNullOrWhiteSpace(h.PortraitUrl)).ToList();
-        foreach (var hero in all)
+        Directory.CreateDirectory(_templateDir);
+        var all = heroes.Where(h => h.Id > 0 && !string.IsNullOrWhiteSpace(h.PortraitUrl))
+            .DistinctBy(h => h.Id).ToList();
+        using var throttle = new SemaphoreSlim(8);
+        var completed=0;
+        await Task.WhenAll(all.Select(async hero =>
         {
-            ct.ThrowIfCancellationRequested();
-            if (_templates.ContainsKey(hero.Id)) continue;
+            await throttle.WaitAsync(ct);
             try
             {
-                // Hero.PortraitUrl is restricted to the Steam CDN by the model.
-                var bytes = await _http.GetByteArrayAsync(hero.PortraitUrl, ct);
-                using var stream = new MemoryStream(bytes);
-                using var bitmap = new Bitmap(stream);
-                _templates[hero.Id] = PortraitRecognition.Signature(bitmap);
-                progress?.Report(_templates.Count);
+                if (_variants.ContainsKey(hero.Id)) return;
+                var list=new List<double[]>();
+                var slug=hero.InternalName.Replace("npc_dota_hero_", "",
+                    StringComparison.OrdinalIgnoreCase);
+                var paths=new List<(string Url,string File)>
+                {
+                    (hero.PortraitUrl,Path.Combine(_templateDir,$"{hero.Id}-wide.png"))
+                };
+                if(slug.Length>0 && slug.All(c => char.IsAsciiLetterOrDigit(c)||c=='_'))
+                    paths.Add((
+                        $"https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/heroes/crops/{slug}.png",
+                        Path.Combine(_templateDir,$"{hero.Id}-crop.png")));
+                foreach(var (url,file) in paths)
+                {
+                    try
+                    {
+                        byte[] bytes;
+                        if(File.Exists(file)) bytes=await File.ReadAllBytesAsync(file,ct);
+                        else
+                        {
+                            bytes=await _http.GetByteArrayAsync(url,ct);
+                            if(bytes.Length>500 && bytes.Length<2_000_000)
+                                await File.WriteAllBytesAsync(file,bytes,ct);
+                        }
+                        using var stream=new MemoryStream(bytes);
+                        using var bitmap=new Bitmap(stream);
+                        list.Add(PortraitRecognition.Signature(bitmap));
+                        if(bitmap.Width>40 && bitmap.Height>35)
+                        {
+                            // HUD portraits can frame a cropped hero head,
+                            // not necessarily the full illustration.
+                            using var center=bitmap.Clone(new Rectangle(
+                                bitmap.Width/8,bitmap.Height/12,
+                                bitmap.Width*3/4,bitmap.Height*5/6),
+                                PixelFormat.Format24bppRgb);
+                            list.Add(PortraitRecognition.Signature(center));
+                        }
+                    }
+                    catch(Exception ex) when(ex is IOException or HttpRequestException or
+                        TaskCanceledException or ArgumentException or
+                        System.Runtime.InteropServices.ExternalException) { }
+                }
+                if(list.Count==0) return;
+                lock(_variants)
+                {
+                    _variants[hero.Id]=list;
+                    _templates[hero.Id]=list[0];
+                }
             }
-            catch (Exception ex) when (ex is HttpRequestException or
-                TaskCanceledException or ArgumentException or
-                System.Runtime.InteropServices.ExternalException or IOException)
+            finally
             {
-                // Do not invent templates for heroes whose images did not load.
+                throttle.Release();
+                progress?.Report(Interlocked.Increment(ref completed));
             }
+        }));
+        return _variants.Count;
+    }
+
+    public RecognizedHero? Recognize(Bitmap bitmap,double minimum=.78,double gap=.075)
+    {
+        var sample=PortraitRecognition.Signature(bitmap);
+        if(sample.All(v=>v==0)) return null;
+        var bestId=0;var best=-1d;var second=-1d;
+        foreach(var (id,options) in _variants)
+        {
+            var score=options.Max(template => PortraitRecognition.Similarity(sample,template));
+            if(score>best) {second=best;best=score;bestId=id;}
+            else if(score>second) second=score;
         }
-        return _templates.Count;
+        return bestId>0 && best>=minimum && best-second>=gap
+            ? new(bestId,best):null;
+    }
+
+    public ScreenDraftObservation AnalyzeAutomatic(Bitmap screen)
+    {
+        var layout=AutoDraftLayout.Locate(screen);
+        if(layout is null)
+            return new(new RecognizedHero?[5],new RecognizedHero?[5],[]);
+        var (radiant,dire,banArea)=layout.Value;
+        return AnalyzeRegions(screen,radiant,dire,banArea);
     }
 
     public ScreenDraftObservation Analyze(Bitmap screen, DraftScreenCalibration calibration)
@@ -274,7 +375,17 @@ public sealed class ScreenDraftReader : IDisposable
         if (_templates.Count < 20)
             throw new InvalidOperationException("Ещё не загружены портреты для распознавания.");
 
-        IReadOnlyList<RecognizedHero?> Picks(ScreenArea area)
+        return AnalyzeRegions(screen,calibration.RadiantPicks,
+            calibration.DirePicks,calibration.HeroGrid);
+    }
+
+    private ScreenDraftObservation AnalyzeRegions(Bitmap screen,
+        ScreenArea radiantArea,ScreenArea direArea,ScreenArea banArea)
+    {
+        if(_variants.Count<20)
+            return new(new RecognizedHero?[5],new RecognizedHero?[5],[]);
+        int radiantPre=0,direPre=0;
+        IReadOnlyList<RecognizedHero?> Picks(ScreenArea area,bool radiant)
         {
             var result = new List<RecognizedHero?>();
             for (var i=0;i<5;i++)
@@ -288,14 +399,19 @@ public sealed class ScreenDraftReader : IDisposable
                 var h=area.Height-2*Math.Max(1,area.Height/9);
                 using var cell=screen.Clone(new Rectangle(x,y,w,h),
                     PixelFormat.Format24bppRgb);
-                result.Add(PortraitRecognition.Match(
-                    PortraitRecognition.Signature(cell),_templates));
+                if(!PortraitRecognition.IsConfirmedColor(cell))
+                {
+                    if(radiant) radiantPre++; else direPre++;
+                    result.Add(null); // gray = pre-pick, NEVER an actual pick
+                    continue;
+                }
+                result.Add(Recognize(cell,.82,.095));
             }
             return result;
         }
 
         var detectedBans=new Dictionary<int,RecognizedHero>();
-        foreach(var slash in PortraitRecognition.FindRedBanSlashes(screen,calibration.HeroGrid))
+        foreach(var slash in PortraitRecognition.FindRedBanSlashes(screen,banArea))
         {
             // Portrait is wider than the red diagonal slash bounds.
             var cx=slash.Left+slash.Width/2;
@@ -303,20 +419,19 @@ public sealed class ScreenDraftReader : IDisposable
             var width=Math.Clamp((int)(slash.Width*1.15),28,128);
             var height=Math.Clamp((int)(width*9d/16),17,80);
             var rect=new Rectangle(cx-width/2,cy-height/2,width,height);
-            rect=Rectangle.Intersect(rect,calibration.HeroGrid.Rect);
+            rect=Rectangle.Intersect(rect,banArea.Rect);
             if(rect.Width<20||rect.Height<14)continue;
             using var cell=screen.Clone(rect,PixelFormat.Format24bppRgb);
             // Desaturation and overlays make ban matches weaker than picks,
             // but require a larger margin over the next closest hero.
-            var match=PortraitRecognition.Match(
-                PortraitRecognition.Signature(cell),_templates,.65,.11);
+            var match=Recognize(cell,.76,.16);
             if(match is not null&&
                 (!detectedBans.TryGetValue(match.HeroId,out var prev)||
                  prev.Confidence<match.Confidence))
                 detectedBans[match.HeroId]=match;
         }
-        return new(Picks(calibration.RadiantPicks),Picks(calibration.DirePicks),
-            detectedBans.Values.ToArray());
+        return new(Picks(radiantArea,true),Picks(direArea,false),
+            detectedBans.Values.ToArray(),radiantPre,direPre);
     }
 
     public void Dispose() => _http.Dispose();
