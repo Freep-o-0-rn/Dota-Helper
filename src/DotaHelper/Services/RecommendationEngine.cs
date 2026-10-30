@@ -67,6 +67,7 @@ public sealed class RecommendationEngine
         var ranked = new List<Recommendation>();
         foreach (var hero in candidates)
         {
+            var counterDetails = new List<(string Name, double Rate, double Weight)>();
             double weightedEdge = 0;
             double possibleWeight = 0;
             int measured = 0;
@@ -75,7 +76,16 @@ public sealed class RecommendationEngine
             foreach (var enemy in pickedEnemies)
             {
                 var enemyId = enemy.SelectedHero!.Id;
-                var weight = enemy.IsLaneOpponent ? 2.0 : 1.0;
+                // All five enemies matter. Known cores 1/2/3 have the highest
+                // strategic impact. Lane opponent is a further modest bonus.
+                // Unknown enemy positions are weighted between core and support.
+                var weight = enemy.EnemyPosition switch
+                {
+                    1 or 2 or 3 => 1.7,
+                    4 or 5 => 1.0,
+                    _ => 1.2
+                };
+                if (enemy.IsLaneOpponent) weight *= 1.25;
                 possibleWeight += weight;
 
                 if (!enemyMatchups.TryGetValue(enemyId, out var matchups)) continue;
@@ -88,6 +98,7 @@ public sealed class RecommendationEngine
                 double candidateRate = (matchup.GamesPlayed - matchup.Wins + 50.0)
                                      / (matchup.GamesPlayed + 100.0);
                 weightedEdge += (candidateRate - 0.5) * weight;
+                counterDetails.Add((enemy.SelectedHero!.Name, candidateRate, weight));
                 measured++;
                 games += matchup.GamesPlayed;
             }
@@ -149,9 +160,14 @@ public sealed class RecommendationEngine
                 $"общий WR {metaAdjustment:+0.0;-0.0;0.0}; " +
                 $"популярность {popularityAdjustment:+0.0;-0.0;0.0}; " +
                 $"избранное {(favorite ? "+4.0" : "0.0")}.";
-            string details = $"{roleLabel}. Контрпики: OpenDota лиги (не выборка твоего ранга). " +
-                "Враги на линии имеют двойной вес; это общие матчапы, не статистика линии. " +
-                "Синергии, патч и статистика по позициям пока не учтены.";
+            string details = $"{roleLabel}. Контрпики: данные OpenDota о лигах, НЕ выбранный рейтинг. " +
+                "В расчёте участвуют все враги: керри/мид/оффлейн важнее, соперники по линии получают бонус. " +
+                "Это общие матчапы, а не показатели линии. Синергии и патч пока не учтены.";
+            var counterSummary = counterDetails.Count == 0
+                ? "Контрпики: достоверных результатов по выбранным противникам нет."
+                : "Контрпики по всей команде (вклад в балл): " +
+                  string.Join("; ", counterDetails.Select(x =>
+                      $"{x.Name} {((x.Rate - .5) * x.Weight / possibleWeight * 70):+0.0;-0.0;0.0}"));
             ranked.Add(new Recommendation(hero, score, measured, pickedEnemies.Count,
                 games, favorite, details)
             {
@@ -159,6 +175,7 @@ public sealed class RecommendationEngine
                 PopularityLabel = popularityLabel,
                 EvidenceLabel = evidence,
                 ScoreBreakdown = contributions,
+                CounterpickSummary = counterSummary,
                 IsRare = rare,
                 IsNonStandard = !isStandard,
                 PositionLabel = isStandard
