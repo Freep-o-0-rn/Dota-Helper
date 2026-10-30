@@ -31,6 +31,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private Hero? _gsiOwnHero;
     private readonly Dictionary<DraftSlot, int> _gsiOwnedPicks = [];
     private readonly Dictionary<BanSlot, int> _gsiOwnedBans = [];
+    private readonly Dictionary<DraftSlot, int> _screenOwnedPicks = [];
+    private readonly Dictionary<BanSlot, int> _screenOwnedBans = [];
     private string _patchDisplay = "Патч: проверка Valve · данные STRATZ исторические";
     private Recommendation? _selectedRecommendation;
     private RankOption? _selectedRank;
@@ -354,7 +356,10 @@ public sealed class MainViewModel : INotifyPropertyChanged
         if (state.MatchId is > 0)
         {
             if (_gsiMatchId is > 0 && _gsiMatchId != state.MatchId)
+            {
                 ClearPreviousGsiSelections();
+                ClearPreviousScreenSelections();
+            }
             _gsiMatchId = state.MatchId;
         }
 
@@ -411,6 +416,50 @@ public sealed class MainViewModel : INotifyPropertyChanged
             : $"GSI подключён · {state.Phase}: получено {received} пиков, " +
               $"{bans} банов, добавлено {changed} новых.";
         return changed;
+    }
+
+    /// <summary>
+    /// Apply only independently confirmed visible screen matches; the reader
+    /// and UI require two consecutive detections and confidence thresholds.
+    /// No negative inference: absent hero is not a ban or an unpick.
+    /// </summary>
+    public int ApplyScreenObservation(ScreenDraftObservation observation)
+    {
+        if (Heroes.Count == 0) return 0;
+        var heroes = Heroes.ToDictionary(h => h.Id);
+        var radiantOwn = SelectedSide?.IsRadiant != false;
+        var radiant = observation.RadiantPicks
+            .Where(x => x is not null).Select(x => x!.HeroId).ToArray();
+        var dire = observation.DirePicks
+            .Where(x => x is not null).Select(x => x!.HeroId).ToArray();
+        var allyIds = radiantOwn ? radiant : dire;
+        var enemyIds = radiantOwn ? dire : radiant;
+        var ownedId = _gsiOwnHero?.Id ?? 0;
+
+        var changes = GsiDraftApplier.MergePicks(allyIds, Allies.ToList(),
+            heroes, ownedId,
+            (slot,id) => _screenOwnedPicks[slot] = id);
+        changes += GsiDraftApplier.MergePicks(enemyIds, Enemies.ToList(),
+            heroes, onAdded: (slot,id) => _screenOwnedPicks[slot] = id);
+
+        // The gallery shows match-wide bans without team attribution in
+        // All Pick. Captains Mode needs known per-team data from GSI.
+        if (IsAllPick)
+            changes += GsiDraftApplier.MergeBans(
+                observation.BannedHeroes.Select(x => x.HeroId),
+                AllPickBans.ToList(), heroes,
+                (slot,id) => _screenOwnedBans[slot] = id);
+        return changes;
+    }
+
+    private void ClearPreviousScreenSelections()
+    {
+        foreach (var (slot,id) in _screenOwnedPicks)
+            if (slot.SelectedHero?.Id == id) slot.SelectedHero = null;
+        foreach (var (slot,id) in _screenOwnedBans)
+            if (slot.SelectedHero?.Id == id) slot.SelectedHero = null;
+        _screenOwnedPicks.Clear();
+        _screenOwnedBans.Clear();
     }
 
     private void ClearPreviousGsiSelections()
@@ -532,6 +581,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
         _previewSlot.SelectedHero = SelectedRecommendation?.Hero;
         _gsiOwnedPicks.Clear();
         _gsiOwnedBans.Clear();
+        _screenOwnedPicks.Clear();
+        _screenOwnedBans.Clear();
     }
 
     public async Task ToggleFavoriteAsync()
