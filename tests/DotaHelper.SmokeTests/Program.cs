@@ -394,3 +394,24 @@ Check(allMids.Single(x => x.Hero.Id == 32).CompactRole.Contains("35%") &&
       allMids.Single(x => x.Hero.Id == 999).PositionLabel.Contains("редкая"),
     "Short and detailed labels must expose role usage without inventing strength");
 Console.WriteLine("Dota Helper 0.8.1 position familiarity checks passed.");
+
+
+// Version 0.9: draft preview and banned heroes remain independent.
+var previewSlot = new DraftSlot("Мой пик", isPreview: true);
+var enemyDraftSlot = new DraftSlot("Противник", isEnemy: true);
+Check(previewSlot.IsPreview && !previewSlot.IsEnemy,
+    "Own recommendation preview must never be counted as a teammate");
+Check(enemyDraftSlot.IsEnemy && !enemyDraftSlot.IsPreview,
+    "Enemy slot must support role and lane controls");
+var banSlot = new BanSlot(1);
+var banChanges = 0;
+banSlot.Changed += (_, _) => banChanges++;
+banSlot.SelectedHero = riki;
+Check(banChanges == 1 && banSlot.SelectedHero?.Id == 32,
+    "A ban selection must notify the UI");
+banSlot.SelectedHero = null;
+Check(banChanges == 2 && banSlot.SelectedHero is null,
+    "Clearing a ban must notify the UI");
+Check(DraftGameMode.AllPick != DraftGameMode.CaptainsMode,
+    "All Pick and Captains Mode bans must remain distinct");
+Console.WriteLine("Dota Helper 0.9 draft UI model tests passed.");
