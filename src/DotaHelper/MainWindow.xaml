@@ -1,7 +1,7 @@
 <Window x:Class="DotaHelper.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Dota Helper — Draft Assistant 0.2" Height="830" Width="1420"
+        Title="Dota Helper — Draft Assistant 0.2.1" Height="830" Width="1420"
         MinWidth="1120" MinHeight="670"
         Background="#10141D" Foreground="#E5EAF2"
         FontFamily="Segoe UI" Loaded="Window_Loaded">
@@ -44,7 +44,7 @@
                 <StackPanel>
                     <TextBlock Text="DOTA HELPER" FontSize="23" FontWeight="Bold"
                                Foreground="#D9B36F"/>
-                    <TextBlock Text="DRAFT ASSISTANT • ПРОТОТИП 0.2"
+                    <TextBlock Text="DRAFT ASSISTANT • ПРОТОТИП 0.2.1"
                                FontSize="11" Foreground="#A2ADBC"/>
                 </StackPanel>
             </DockPanel>
@@ -72,7 +72,7 @@
                                Foreground="#D9B36F" Margin="0,17,0,4"/>
                     <ComboBox IsEditable="False" ItemsSource="{Binding PoolOptions}"
                               SelectedItem="{Binding SelectedPool, Mode=TwoWay}"/>
-                    <TextBlock Text="«Без редких» скрывает нижние 25% по числу пиков. Это не оценка силы."
+                    <TextBlock Text="Для поддержки (4/5) действует базовый пул. «Эксперимент» разрешает нестандартные пики."
                                Foreground="#A2ADBC" FontSize="11"
                                TextWrapping="Wrap" Margin="0,7,0,0"/>
 
@@ -87,7 +87,7 @@
                             Margin="0,17,0,17"/>
                     <TextBlock Text="ОГРАНИЧЕНИЯ" FontWeight="Bold"
                                Foreground="#D9B36F"/>
-                    <TextBlock Text="Синергия и данные строго по текущему патчу пока отсутствуют. Архетип ≠ реальная позиция."
+                    <TextBlock Text="Пул поддержки составлен вручную. Общий WR не равен WR на позиции; текущий патч не учтён."
                                Foreground="#A2ADBC" FontSize="12" TextWrapping="Wrap"
                                Margin="0,8,0,0"/>
                 </StackPanel>
@@ -193,6 +193,8 @@
                                                            Foreground="#E5EAF2"/>
                                             </StackPanel>
                                         </DockPanel>
+                                        <TextBlock Text="{Binding PositionLabel}"
+                                                   Foreground="#E7B26D" FontSize="11" Margin="0,4,0,0"/>
                                         <TextBlock Text="{Binding MetaLabel}"
                                                    Foreground="#9EE2BE" FontSize="12" Margin="0,4,0,0"/>
                                         <TextBlock Text="{Binding PopularityLabel}"
