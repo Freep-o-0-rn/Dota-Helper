@@ -82,6 +82,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
             OnPropertyChanged(nameof(DireSlots));
             OnPropertyChanged(nameof(RadiantAreAllies));
             OnPropertyChanged(nameof(DireAreAllies));
+            OnPropertyChanged(nameof(RadiantSideLabel));
+            OnPropertyChanged(nameof(DireSideLabel));
             DraftChanged?.Invoke(this, EventArgs.Empty);
             _ = SavePreferencesAsync();
         }
@@ -91,6 +93,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public bool IsCaptainsMode => !IsAllPick;
     public bool RadiantAreAllies => SelectedSide?.IsRadiant != false;
     public bool DireAreAllies => !RadiantAreAllies;
+    public string RadiantSideLabel => RadiantAreAllies ? "СОЮЗНИКИ" : "ПРОТИВНИКИ";
+    public string DireSideLabel => DireAreAllies ? "СОЮЗНИКИ" : "ПРОТИВНИКИ";
 
     public IReadOnlyList<DraftSlot> RadiantSlots => RadiantAreAllies
         ? Allies.Append(_previewSlot).ToList() : Enemies.ToList();
