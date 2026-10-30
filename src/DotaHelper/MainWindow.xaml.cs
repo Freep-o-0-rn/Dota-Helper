@@ -73,13 +73,13 @@ public partial class MainWindow : Window
 
     private void ClearSlot_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is Button { Tag: DraftSlot slot })
+        if (sender is System.Windows.Controls.Button { Tag: DraftSlot slot })
             _viewModel.ClearSlot(slot);
     }
 
     private void ClearDraft_Click(object sender, RoutedEventArgs e)
     {
-        if (MessageBox.Show(this,
+        if (System.Windows.MessageBox.Show(this,
             "Очистить выбранных союзников и противников? Настройки и избранное сохранятся.",
             "Очистка драфта", MessageBoxButton.YesNo, MessageBoxImage.Question)
             == MessageBoxResult.Yes)
@@ -94,7 +94,7 @@ public partial class MainWindow : Window
 
     private void PickHero_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is not Button { Tag: DraftSlot slot } || slot.IsPreview) return;
+        if (sender is not System.Windows.Controls.Button { Tag: DraftSlot slot } || slot.IsPreview) return;
         var picker = new HeroPickerWindow(
             _viewModel.Heroes, slot.IsEnemy ? "Пик противника" : "Пик союзника",
             slot.SelectedHero) { Owner = this };
@@ -104,7 +104,7 @@ public partial class MainWindow : Window
 
     private void PickBan_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is not Button { Tag: BanSlot slot }) return;
+        if (sender is not System.Windows.Controls.Button { Tag: BanSlot slot }) return;
         var picker = new HeroPickerWindow(
             _viewModel.Heroes, "Забаненный герой", slot.SelectedHero)
         { Owner = this };
@@ -114,7 +114,7 @@ public partial class MainWindow : Window
 
     private void ClearBans_Click(object sender, RoutedEventArgs e)
     {
-        if (MessageBox.Show(this, "Очистить список банов?",
+        if (System.Windows.MessageBox.Show(this, "Очистить список банов?",
             "Очистка банов", MessageBoxButton.YesNo, MessageBoxImage.Question)
             == MessageBoxResult.Yes)
             _viewModel.ClearBans();
@@ -168,7 +168,7 @@ public partial class MainWindow : Window
         {
             service?.Dispose();
             _viewModel.SetGsiStatus("GSI: не удалось подключить: " + ex.Message);
-            MessageBox.Show(this, ex.Message, "Dota Helper: GSI",
+            System.Windows.MessageBox.Show(this, ex.Message, "Dota Helper: GSI",
                 MessageBoxButton.OK, MessageBoxImage.Warning);
         }
     }

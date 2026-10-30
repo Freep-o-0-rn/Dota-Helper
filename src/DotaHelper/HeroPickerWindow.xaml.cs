@@ -102,7 +102,7 @@ public partial class HeroPickerWindow : Window
 
     private void Hero_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is not Button { Tag: HeroPickerTile { IsMatch: true } tile })
+        if (sender is not System.Windows.Controls.Button { Tag: HeroPickerTile { IsMatch: true } tile })
             return;
         SelectedHero = tile.Hero;
         DialogResult = true;
