@@ -21,9 +21,74 @@ public sealed class OpenDotaClient
 
     public async Task<IReadOnlyList<Hero>> GetHeroesAsync()
     {
-        var heroes = await GetCachedAsync<List<Hero>>(
-            "heroes.json", "heroes", TimeSpan.FromDays(7));
-        return heroes.OrderBy(h => h.Name).ToList();
+        var byId = new Dictionary<int, Hero>();
+        Exception? openDotaError = null;
+        try
+        {
+            // Shorter TTL so recently introduced heroes are not hidden for a week.
+            var heroes = await GetCachedAsync<List<Hero>>(
+                "heroes.json", "heroes", TimeSpan.FromDays(1));
+            foreach (var hero in heroes.Where(h => h.Id > 0))
+                byId[hero.Id] = hero;
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or HttpRequestException)
+        {
+            openDotaError = ex;
+        }
+
+        try
+        {
+            // Valve's authoritative roster supplements OpenDota's catalog.
+            // Valve feed is key-free; it does not supply position-specific win rates.
+            using var doc = await GetCachedAsync<JsonDocument>(
+                "valve-herolist.json",
+                "https://www.dota2.com/datafeed/herolist?language=english",
+                TimeSpan.FromDays(1));
+            var list = doc.RootElement
+                .GetProperty("result").GetProperty("data").GetProperty("heroes");
+            foreach (var item in list.EnumerateArray())
+            {
+                var id = item.GetProperty("id").GetInt32();
+                if (id <= 0) continue;
+                var internalName = item.GetProperty("name").GetString() ?? "";
+                var displayName = item.TryGetProperty("name_loc", out var loc)
+                    ? loc.GetString() : null;
+                if (string.IsNullOrWhiteSpace(displayName) &&
+                    item.TryGetProperty("name_english_loc", out var en))
+                    displayName = en.GetString();
+                displayName ??= internalName.Replace("npc_dota_hero_", "");
+
+                if (byId.TryGetValue(id, out var existing))
+                {
+                    if (string.IsNullOrWhiteSpace(existing.Name))
+                        existing.Name = displayName;
+                    if (string.IsNullOrWhiteSpace(existing.InternalName))
+                        existing.InternalName = internalName;
+                }
+                else
+                {
+                    // Brand-new heroes have unknown statistical role tags,
+                    // but can still appear via explicit position profiles.
+                    byId[id] = new Hero
+                    {
+                        Id = id, InternalName = internalName, Name = displayName,
+                        Roles = []
+                    };
+                }
+            }
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or JsonException
+            or KeyNotFoundException or HttpRequestException)
+        {
+            if (byId.Count == 0)
+                throw new InvalidOperationException(
+                    "Не удалось загрузить героев из OpenDota или Valve.", ex);
+        }
+
+        if (byId.Count == 0)
+            throw new InvalidOperationException(
+                "Каталог героев пуст.", openDotaError);
+        return byId.Values.OrderBy(h => h.Name).ToList();
     }
 
     public async Task<PlayerProfile> GetPlayerProfileAsync(long accountId)
