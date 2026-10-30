@@ -154,7 +154,16 @@ public sealed class DraftSlot : INotifyPropertyChanged
     private bool _isLaneOpponent;
     private int _enemyPosition;
 
-    public DraftSlot(string label) => Label = label;
+    public DraftSlot(string label, bool isEnemy = false, bool isPreview = false)
+    {
+        Label = label;
+        IsEnemy = isEnemy;
+        IsPreview = isPreview;
+    }
+
+    public bool IsEnemy { get; }
+    public bool IsPreview { get; }
+    public string TileHint => IsPreview ? "Твой будущий пик (предпросмотр)" : Label;
 
     public string Label { get; }
 
@@ -200,6 +209,41 @@ public sealed class DraftSlot : INotifyPropertyChanged
 
     private void OnPropertyChanged([CallerMemberName] string? name = null) =>
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
+}
+
+
+public enum DraftGameMode { AllPick = 0, CaptainsMode = 1 }
+
+public sealed record DraftModeOption(DraftGameMode Mode, string Label)
+{
+    public override string ToString() => Label;
+}
+
+public sealed record TeamSideOption(bool IsRadiant, string Label)
+{
+    public override string ToString() => Label;
+}
+
+public sealed class BanSlot : INotifyPropertyChanged
+{
+    private Hero? _selectedHero;
+
+    public BanSlot(int index) => Index = index;
+    public int Index { get; }
+    public Hero? SelectedHero
+    {
+        get => _selectedHero;
+        set
+        {
+            if (ReferenceEquals(_selectedHero, value)) return;
+            _selectedHero = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(SelectedHero)));
+            Changed?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    public event PropertyChangedEventHandler? PropertyChanged;
+    public event EventHandler? Changed;
 }
 
 public sealed record Recommendation(
