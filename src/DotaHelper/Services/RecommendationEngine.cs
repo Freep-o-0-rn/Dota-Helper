@@ -87,6 +87,7 @@ public sealed class RecommendationEngine
             }
             double weightedEdge = 0;
             double possibleWeight = 0;
+            double reliableWeight = 0;
             int measured = 0;
             int games = 0;
 
@@ -110,15 +111,21 @@ public sealed class RecommendationEngine
                 if (matchup is null || matchup.GamesPlayed < 20 ||
                     matchup.Wins < 0 || matchup.Wins > matchup.GamesPlayed) continue;
 
-                // OpenDota /heroes/{enemyId}/matchups reports ENEMY wins.
-                // Convert into candidate's rate, then shrink toward 50%.
-                double candidateRate = (matchup.GamesPlayed - matchup.Wins + 50.0)
-                                     / (matchup.GamesPlayed + 100.0);
+                // Both sources report wins of the QUERIED enemy. The observed
+                // candidate wins are games - enemy wins. Shrink the matchup
+                // toward its own source's baseline, NOT toward a fixed 50%
+                // followed by subtracting a different baseline.
                 var source = matchupSources?.GetValueOrDefault(enemyId) ?? "OpenDota";
                 var baseline = source.StartsWith("STRATZ", StringComparison.Ordinal)
                     ? overallStratzBaseline : .5;
+                const double priorGames = 200.0;
+                double candidateWins = matchup.GamesPlayed - matchup.Wins;
+                double candidateRate = (candidateWins + priorGames * baseline)
+                                     / (matchup.GamesPlayed + priorGames);
                 var edge = candidateRate - baseline;
                 weightedEdge += edge * weight;
+                reliableWeight += weight * matchup.GamesPlayed /
+                    (matchup.GamesPlayed + priorGames);
                 counterDetails.Add((enemy.SelectedHero!.Name, edge, weight,
                     matchup.GamesPlayed, source));
                 measured++;
@@ -130,6 +137,14 @@ public sealed class RecommendationEngine
             var matchupAdjustment = possibleWeight > 0
                 ? Math.Clamp(weightedEdge / possibleWeight * 70.0, -17.0, 17.0)
                 : 0;
+            // Confidence is a coverage indicator, NOT win probability.
+            var evidenceCoverage = possibleWeight > 0
+                ? 100 * reliableWeight / possibleWeight : 0;
+            var evidenceGrade = pickedEnemies.Count == 0 ? "враги не выбраны"
+                : evidenceCoverage >= 55 ? "высокая"
+                : evidenceCoverage >= 25 ? "средняя" : "низкая";
+            var evidenceSummary = $"Достоверность контрпиков: {evidenceGrade}, " +
+                $"полнота данных {evidenceCoverage:F0}% ({measured}/{pickedEnemies.Count} врагов).";
 
             // Ally synergy is a SECONDARY factor: its maximum absolute effect
             // is 7 points, vs 17 for enemy counterpicks. We compare the
@@ -256,6 +271,7 @@ public sealed class RecommendationEngine
                 MetaLabel = metaLabel,
                 PopularityLabel = popularityLabel,
                 EvidenceLabel = evidence,
+                ReliabilityLabel = evidenceSummary,
                 ScoreBreakdown = contributions,
                 CounterpickSummary = counterSummary,
                 SynergySummary = synergySummary,
