@@ -21,6 +21,10 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private Recommendation? _selectedRecommendation;
     private RankOption? _selectedRank;
     private PoolOption? _selectedPool;
+    private MetaOption? _selectedMeta;
+    private string _playerInput = "";
+    private string _profileSummary = "Укажи свой Steam Account ID или SteamID64.";
+
     private string _heroSearchText = "";
 
     public ObservableCollection<Hero> Heroes { get; } = [];
@@ -59,6 +63,103 @@ public sealed class MainViewModel : INotifyPropertyChanged
     }
     public int[] Positions { get; } = [1, 2, 3, 4, 5];
 
+    public IReadOnlyList<EnemyPositionOption> EnemyPositionOptions { get; } =
+    [
+        new(0, "Роль неизвестна"), new(1, "1 · Керри"),
+        new(2, "2 · Мид"), new(3, "3 · Оффлейн"),
+        new(4, "4 · Саппорт"), new(5, "5 · Саппорт")
+    ];
+
+    public IReadOnlyList<MetaOption> MetaOptions { get; } =
+    [
+        new(MetaMode.PlayerRank, "Мой рейтинг"),
+        new(MetaMode.Professional, "Профессиональная мета")
+    ];
+
+    public MetaOption? SelectedMeta
+    {
+        get => _selectedMeta;
+        set
+        {
+            if (value is null || Equals(_selectedMeta, value)) return;
+            _selectedMeta = value;
+            OnPropertyChanged();
+            DraftChanged?.Invoke(this, EventArgs.Empty);
+            _ = SavePreferencesAsync();
+        }
+    }
+
+    public string PlayerInput
+    {
+        get => _playerInput;
+        set
+        {
+            if (_playerInput == value) return;
+            _playerInput = value ?? "";
+            OnPropertyChanged();
+        }
+    }
+
+    public string ProfileSummary
+    {
+        get => _profileSummary;
+        private set { _profileSummary = value; OnPropertyChanged(); }
+    }
+
+    public async Task LoadPlayerProfileAsync()
+    {
+        var raw = PlayerInput.Trim();
+        if (Uri.TryCreate(raw, UriKind.Absolute, out var uri))
+            raw = uri.AbsolutePath.TrimEnd('/').Split('/').LastOrDefault() ?? "";
+
+        if (!ulong.TryParse(raw, out var numeric))
+        {
+            ProfileSummary = "Неверный ID. Введи Account ID, SteamID64 или числовую ссылку на профиль.";
+            return;
+        }
+
+        const ulong steam64Base = 76561197960265728UL;
+        if (numeric >= steam64Base) numeric -= steam64Base;
+        if (numeric == 0 || numeric > uint.MaxValue)
+        {
+            ProfileSummary = "ID вне допустимого диапазона Steam Account ID.";
+            return;
+        }
+
+        var accountId = (long)numeric;
+        try
+        {
+            ProfileSummary = "Получаем публичный рейтинг...";
+            var profile = await _api.GetPlayerProfileAsync(accountId);
+            _preferences.PlayerAccountId = accountId;
+            PlayerInput = accountId.ToString();
+            var rankTier = profile.RankTier ?? 0;
+            var playerName = string.IsNullOrWhiteSpace(profile.Identity?.Name)
+                ? $"ID {accountId}" : profile.Identity.Name;
+            if (rankTier >= 10 && rankTier < 80)
+            {
+                var bracket = rankTier / 10;
+                SelectedRank = RankOptions.First(o => o.Id == bracket);
+                ProfileSummary = $"{playerName}: ранг {SelectedRank.Label} (медаль {rankTier}).";
+            }
+            else if (rankTier >= 80)
+            {
+                SelectedRank = RankOptions[0];
+                ProfileSummary = $"{playerName}: Immortal. Отдельных данных по рангу Immortal нет; выбрана общая выборка.";
+            }
+            else
+            {
+                ProfileSummary = $"{playerName}: публичная медаль недоступна, ранг выбери вручную.";
+            }
+            await SavePreferencesAsync();
+        }
+        catch (Exception ex)
+        {
+            ProfileSummary = $"Не удалось загрузить профиль: {ex.Message}";
+        }
+    }
+
+
     public IReadOnlyList<RankOption> RankOptions { get; } =
     [
         new(0, "Все доступные ранги"),
@@ -68,10 +169,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
     ];
     public IReadOnlyList<PoolOption> PoolOptions { get; } =
     [
-        new(HeroPoolMode.Common, "По роли, без редких"),
-        new(HeroPoolMode.All, "Все подходящие по роли"),
-        new(HeroPoolMode.Favorites, "Избранные по роли"),
-        new(HeroPoolMode.Experimental, "Эксперимент: все герои")
+        new(HeroPoolMode.All, "По ролям"),
+        new(HeroPoolMode.Experimental, "Эксперимент")
     ];
 
     public MainViewModel()
@@ -82,6 +181,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             slot.Changed += (_, _) => DraftChanged?.Invoke(this, EventArgs.Empty);
         _selectedRank = RankOptions[0];
         _selectedPool = PoolOptions[0];
+        _selectedMeta = MetaOptions[0];
     }
 
     public int SelectedPosition
@@ -144,8 +244,12 @@ public sealed class MainViewModel : INotifyPropertyChanged
         SelectedPosition = _preferences.SelectedPosition;
         SelectedRank = RankOptions.FirstOrDefault(x => x.Id == _preferences.SelectedRankBracket)
                        ?? RankOptions[0];
-        SelectedPool = PoolOptions.FirstOrDefault(x => (int)x.Mode == _preferences.SelectedPoolMode)
-                       ?? PoolOptions[0];
+        SelectedPool = _preferences.SelectedPoolMode == (int)HeroPoolMode.Experimental
+            ? PoolOptions[1] : PoolOptions[0];
+        SelectedMeta = MetaOptions.FirstOrDefault(x => (int)x.Mode == _preferences.MetaMode)
+                       ?? MetaOptions[0];
+        if (_preferences.PlayerAccountId is > 0)
+            PlayerInput = _preferences.PlayerAccountId.Value.ToString();
 
         try
         {
@@ -170,6 +274,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
         {
             _statsAvailable = false;
         }
+        if (_preferences.PlayerAccountId is > 0)
+            await LoadPlayerProfileAsync();
         await RecalculateAsync();
     }
 
@@ -178,6 +284,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         if (slot is null) return;
         slot.SelectedHero = null;
         slot.IsLaneOpponent = false;
+        slot.EnemyPosition = 0;
     }
 
     public async Task ToggleFavoriteAsync()
@@ -210,7 +317,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
         var ranked = _engine.Rank(
             Heroes.ToList(), Allies.ToList(), Enemies.ToList(), SelectedPosition,
             _preferences.FavoriteHeroIds, matchups, _heroStats,
-            SelectedRank?.Id ?? 0, SelectedPool?.Mode ?? HeroPoolMode.Common);
+            SelectedRank?.Id ?? 0, SelectedPool?.Mode ?? HeroPoolMode.All,
+            SelectedMeta?.Mode == MetaMode.Professional);
 
         Recommendations.Clear();
         foreach (var item in ranked) Recommendations.Add(item);
@@ -220,25 +328,27 @@ public sealed class MainViewModel : INotifyPropertyChanged
             : null;
 
         var unavailable = results.Count(r => r.Error);
+        var proMode = SelectedMeta?.Mode == MetaMode.Professional;
+        var baselinePresent = _heroStats.Values.Any(x =>
+            proMode ? x.InProMatches().Picks > 0 : x.InBracket(SelectedRank?.Id ?? 0).Picks > 0);
         if (Recommendations.Count == 0)
         {
-            Status = SelectedPool?.Mode == HeroPoolMode.Favorites
-                ? "Нет подходящих избранных героев. Измени пул или отметь своих героев."
-                : "Нет подходящих героев с выбранными настройками.";
+            Status = "Нет подходящих героев для выбранной роли; попробуй «Эксперимент».";
             return;
         }
-        Status = !_statsAvailable
-            ? "Внимание: /heroStats недоступен. Популярность и общий WR отсутствуют; оценки предварительные."
+        Status = !_statsAvailable || !baselinePresent
+            ? "Выбранная мета: статистика WR недоступна. Контрпики — общие данные лиг OpenDota."
             : unavailable > 0
-                ? $"Недоступны матчапы для {unavailable} врагов. Показаны частичные данные."
-                : "0.3: роли 1–5 — ручные пулы; WR по всем ролям. Патч, синергии и статистика линий не учтены.";
+                ? $"Недоступны матчапы {unavailable} врагов. Контрпики рассчитаны частично."
+                : "0.4: контрпики всех врагов; приоритет 1–3. WR по всем ролям; матчапы OpenDota — лиги.";
     }
 
     private async Task SavePreferencesAsync()
     {
         _preferences.SelectedPosition = SelectedPosition;
         _preferences.SelectedRankBracket = SelectedRank?.Id ?? 0;
-        _preferences.SelectedPoolMode = (int)(SelectedPool?.Mode ?? HeroPoolMode.Common);
+        _preferences.SelectedPoolMode = (int)(SelectedPool?.Mode ?? HeroPoolMode.All);
+        _preferences.MetaMode = (int)(SelectedMeta?.Mode ?? MetaMode.PlayerRank);
         try { await _store.SaveAsync(_preferences); }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
