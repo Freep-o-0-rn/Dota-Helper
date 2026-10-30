@@ -20,7 +20,9 @@ public sealed class RecommendationEngine
         HeroPoolMode pool = HeroPoolMode.Common,
         bool professionalMeta = false,
         IReadOnlyDictionary<int, IReadOnlyList<PositionSample>>? observedPositions = null,
-        IReadOnlyDictionary<int, string>? matchupSources = null)
+        IReadOnlyDictionary<int, string>? matchupSources = null,
+        IReadOnlyDictionary<int, IReadOnlyList<Matchup>>? allySynergies = null,
+        IReadOnlyDictionary<int, string>? synergySources = null)
     {
         var alreadyPicked = allies.Concat(enemies)
             .Select(slot => slot.SelectedHero?.Id)
@@ -33,6 +35,11 @@ public sealed class RecommendationEngine
             .Where(slot => slot.SelectedHero is not null)
             .GroupBy(slot => slot.SelectedHero!.Id)
             .Select(group => group.FirstOrDefault(x => x.IsLaneOpponent) ?? group.First())
+            .ToList();
+
+        var pickedAllies = allies.Where(slot => slot.SelectedHero is not null)
+            .GroupBy(slot => slot.SelectedHero!.Id)
+            .Select(group => group.First())
             .ToList();
 
         var stats = heroStatistics ?? new Dictionary<int, HeroStats>();
@@ -124,6 +131,31 @@ public sealed class RecommendationEngine
                 ? Math.Clamp(weightedEdge / possibleWeight * 70.0, -17.0, 17.0)
                 : 0;
 
+            // Ally synergy is a SECONDARY factor: its maximum absolute effect
+            // is 7 points, vs 17 for enemy counterpicks. We compare the
+            // observed combined-team win rate to this hero's rank baseline.
+            // Missing teammates count as neutral, and duplicates only once.
+            double allyEdgeSum = 0;
+            var synergyDetails = new List<string>();
+            foreach (var ally in pickedAllies)
+            {
+                var allyId = ally.SelectedHero!.Id;
+                if (allySynergies is null ||
+                    !allySynergies.TryGetValue(allyId, out var rows)) continue;
+                var with = rows.FirstOrDefault(r => r.HeroId == hero.Id);
+                if (with is null || with.GamesPlayed < 30 ||
+                    with.Wins < 0 || with.Wins > with.GamesPlayed) continue;
+                var combinedRate = (with.Wins + 50.0) / (with.GamesPlayed + 100.0);
+                var edge = combinedRate - overallStratzBaseline;
+                allyEdgeSum += edge;
+                var source = synergySources?.GetValueOrDefault(allyId) ?? "STRATZ";
+                synergyDetails.Add($"{ally.SelectedHero.Name}: {edge * 35.0 / pickedAllies.Count:+0.0;-0.0;0.0}" +
+                    $" ({with.GamesPlayed:N0} матчей, {source})");
+            }
+            var synergyAdjustment = pickedAllies.Count > 0
+                ? Math.Clamp(allyEdgeSum / pickedAllies.Count * 35.0, -7.0, 7.0)
+                : 0;
+
             var isStandard = PositionEvidence.IsEligible(observed, hero.Id, position);
             var sample = PositionEvidence.Find(observed, hero.Id, position);
             var totalHeroGames = observed.TryGetValue(hero.Id, out var positionRows)
@@ -179,7 +211,8 @@ public sealed class RecommendationEngine
             // of strength on a specific position.
             popularityAdjustment = 0;
             var score = Math.Clamp(50 + roleAdjustment + matchupAdjustment
-                + metaAdjustment + popularityAdjustment + (favorite ? 4 : 0), 0, 100);
+                + synergyAdjustment + metaAdjustment + popularityAdjustment +
+                (favorite ? 4 : 0), 0, 100);
 
             string roleLabel = isStandard
                 ? $"STRATZ: позиция {position}, {sample!.Games:N0} игр " +
@@ -194,20 +227,29 @@ public sealed class RecommendationEngine
             // Show exactly how a candidate got its heuristic score. No win-rate claims.
             string contributions = $"Вклад в балл: роль {roleAdjustment:+0.0;-0.0;0.0}; " +
                 $"противники {matchupAdjustment:+0.0;-0.0;0.0}; " +
-                $"общий WR {metaAdjustment:+0.0;-0.0;0.0}; " +
+                $"союзники {synergyAdjustment:+0.0;-0.0;0.0}; " +
+                $"WR выбранной меты {metaAdjustment:+0.0;-0.0;0.0}; " +
                 $"популярность {popularityAdjustment:+0.0;-0.0;0.0}; " +
                 $"избранное {(favorite ? "+4.0" : "0.0")}.";
             string details = $"{roleLabel}. Контрпики считаются против всей команды, " +
                 "керри/мид/оффлейн имеют больший вес, враги на линии — дополнительный. " +
                 "STRATZ матчи сгруппированы по двум соседним рангам; резервные данные OpenDota " +
                 "относятся к лигам. Позиции противников не проверяются в статистике матчапов. " +
-                "Ни позиции, ни матчапы пока не фильтруются по текущему патчу.";
+                "Синергии союзников — STRATZ, если выборка доступна, с меньшим весом, " +
+                "чем контрпики. Данные пока не фильтруются по текущему патчу.";
             var counterSummary = counterDetails.Count == 0
                 ? "Контрпики: достоверных результатов по выбранным противникам нет."
                 : "Контрпики по всей команде (вклад в балл): " +
                   string.Join("; ", counterDetails.Select(x =>
                       $"{x.Name}: {(x.Edge * x.Weight / possibleWeight * 70):+0.0;-0.0;0.0}" +
                       $" ({x.Games:N0} матчей, {x.Source})"));
+            var synergySummary = pickedAllies.Count == 0
+                ? "Синергии: союзники пока не выбраны."
+                : synergyDetails.Count == 0
+                    ? $"Синергии: нет достаточных данных для {pickedAllies.Count} союзников."
+                    : "Синергии с союзниками (вклад в балл): " +
+                      string.Join("; ", synergyDetails);
+
             ranked.Add(new Recommendation(hero, score, measured, pickedEnemies.Count,
                 games, favorite, details)
             {
@@ -216,6 +258,10 @@ public sealed class RecommendationEngine
                 EvidenceLabel = evidence,
                 ScoreBreakdown = contributions,
                 CounterpickSummary = counterSummary,
+                SynergySummary = synergySummary,
+                CompactSynergy = synergyDetails.Count > 0
+                    ? $"Союзники {synergyAdjustment:+0.0;-0.0;0.0}"
+                    : "Союзники —",
                 CompactWinRate = compactWinRate,
                 CompactCounterpick = measured > 0
                     ? $"Контрпик {matchupAdjustment:+0.0;-0.0;0.0}"
