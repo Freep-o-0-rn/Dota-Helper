@@ -26,6 +26,10 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private int _selectedPosition = 3;
     private int _revision;
     private string _status = "Загрузка...";
+    private string _gsiStatus = "GSI: не подключён. Нажми «Подключить Dota 2».";
+    private long? _gsiMatchId;
+    private readonly Dictionary<DraftSlot, int> _gsiOwnedPicks = [];
+    private readonly Dictionary<BanSlot, int> _gsiOwnedBans = [];
     private string _patchDisplay = "Патч: проверка Valve · данные STRATZ исторические";
     private Recommendation? _selectedRecommendation;
     private RankOption? _selectedRank;
@@ -329,6 +333,92 @@ public sealed class MainViewModel : INotifyPropertyChanged
         private set { _patchDisplay = value; OnPropertyChanged(); }
     }
 
+    public string GsiStatus
+    {
+        get => _gsiStatus;
+        private set { if (_gsiStatus == value) return; _gsiStatus = value; OnPropertyChanged(); }
+    }
+
+    public void SetGsiStatus(string status) => GsiStatus = status;
+
+    /// <summary>
+    /// Apply only picks/bans actually sent by the local Dota 2 client.
+    /// Never invent hidden All Pick information or erase manual slots when
+    /// an incomplete packet omits them. Invoked on the WPF UI dispatcher.
+    /// </summary>
+    public int ApplyGsiDraft(GsiDraftState state)
+    {
+        if (Heroes.Count == 0) return 0;
+
+        if (state.MatchId is > 0)
+        {
+            if (_gsiMatchId is > 0 && _gsiMatchId != state.MatchId)
+                ClearPreviousGsiSelections();
+            _gsiMatchId = state.MatchId;
+        }
+
+        // Use the actual team when the game supplies it. In spectator mode
+        // team can be unknown, and user-selected side remains authoritative.
+        if (state.PlayerRadiant is bool side && SelectedSide?.IsRadiant != side)
+            SelectedSide = TeamSides.First(x => x.IsRadiant == side);
+
+        var byId = Heroes.ToDictionary(h => h.Id);
+        var ownedId = Heroes.FirstOrDefault(h =>
+            string.Equals(h.InternalName, state.OwnHeroName,
+                StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(h.Name, state.OwnHeroName,
+                StringComparison.OrdinalIgnoreCase))?.Id ?? 0;
+
+        var ownRadiant = state.PlayerRadiant ?? (SelectedSide?.IsRadiant != false);
+        var allyPicks = ownRadiant ? state.RadiantPicks : state.DirePicks;
+        var enemyPicks = ownRadiant ? state.DirePicks : state.RadiantPicks;
+        var changed = GsiDraftApplier.MergePicks(allyPicks, Allies.ToList(), byId,
+            ownedId, (slot, id) => _gsiOwnedPicks[slot] = id);
+        changed += GsiDraftApplier.MergePicks(enemyPicks, Enemies.ToList(), byId,
+            onAdded: (slot, id) => _gsiOwnedPicks[slot] = id);
+
+        if (IsCaptainsMode)
+        {
+            changed += GsiDraftApplier.MergeBans(
+                state.RadiantBans, RadiantCaptainBans.ToList(), byId,
+                (slot, id) => _gsiOwnedBans[slot] = id);
+            changed += GsiDraftApplier.MergeBans(
+                state.DireBans, DireCaptainBans.ToList(), byId,
+                (slot, id) => _gsiOwnedBans[slot] = id);
+        }
+        else
+        {
+            changed += GsiDraftApplier.MergeBans(
+                state.RadiantBans.Concat(state.DireBans), AllPickBans.ToList(),
+                byId, (slot, id) => _gsiOwnedBans[slot] = id);
+        }
+
+        var received = state.RadiantPicks.Count + state.DirePicks.Count;
+        var bans = state.RadiantBans.Count + state.DireBans.Count;
+        GsiStatus = received + bans == 0
+            ? $"GSI подключён · {state.Phase}: игра не передаёт пики/баны " +
+              "(в All Pick это возможно). Ручной выбор доступен."
+            : $"GSI подключён · {state.Phase}: получено {received} пиков, " +
+              $"{bans} банов, добавлено {changed} новых.";
+        return changed;
+    }
+
+    private void ClearPreviousGsiSelections()
+    {
+        foreach (var (slot, id) in _gsiOwnedPicks)
+        {
+            if (slot.SelectedHero?.Id == id)
+                slot.SelectedHero = null;
+        }
+        foreach (var (slot, id) in _gsiOwnedBans)
+        {
+            if (slot.SelectedHero?.Id == id)
+                slot.SelectedHero = null;
+        }
+        _gsiOwnedPicks.Clear();
+        _gsiOwnedBans.Clear();
+    }
+
     public string Status
     {
         get => _status;
@@ -424,6 +514,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
         foreach (var slot in Allies.Concat(Enemies))
             ClearSlot(slot);
         ClearBans();
+        _gsiOwnedPicks.Clear();
+        _gsiOwnedBans.Clear();
     }
 
     public async Task ToggleFavoriteAsync()
