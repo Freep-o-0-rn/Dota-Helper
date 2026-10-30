@@ -1,7 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
@@ -16,6 +18,7 @@
     <Compile Include="../../src/DotaHelper/Services/PatchInfoClient.cs" Link="PatchInfoClient.cs" />
     <Compile Include="../../src/DotaHelper/Services/HeroSearch.cs" Link="HeroSearch.cs" />
     <Compile Include="../../src/DotaHelper/Services/DotaGsiService.cs" Link="DotaGsiService.cs" />
+    <Compile Include="../../src/DotaHelper/Services/ScreenDraftReader.cs" Link="ScreenDraftReader.cs" />
     <Compile Include="../../src/DotaHelper/Services/OpenDotaClient.cs" Link="OpenDotaClient.cs" />
   </ItemGroup>
 </Project>
