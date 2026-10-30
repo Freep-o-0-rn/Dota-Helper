@@ -59,6 +59,10 @@ public sealed class HeroStats
     [JsonPropertyName("7_win")] public long? Wins7 { get; set; }
     [JsonPropertyName("8_pick")] public long? Picks8 { get; set; }
     [JsonPropertyName("8_win")] public long? Wins8 { get; set; }
+    [JsonPropertyName("pro_pick")] public long? ProPicks { get; set; }
+    [JsonPropertyName("pro_win")] public long? ProWins { get; set; }
+
+    public (long Picks, long Wins) InProMatches() => (ProPicks ?? 0, ProWins ?? 0);
 
     public (long Picks, long Wins) InBracket(int bracket) => bracket switch
     {
@@ -74,6 +78,27 @@ public sealed class HeroStats
 }
 
 public enum HeroPoolMode { Common = 0, All = 1, Favorites = 2, Experimental = 3 }
+
+public enum MetaMode { PlayerRank = 0, Professional = 1 }
+
+public sealed record MetaOption(MetaMode Mode, string Label)
+{
+    public override string ToString() => Label;
+}
+
+/// <summary>OpenDota player profile contains a public medal if available.</summary>
+public sealed class PlayerProfile
+{
+    [JsonPropertyName("rank_tier")] public int? RankTier { get; set; }
+    [JsonPropertyName("leaderboard_rank")] public int? LeaderboardRank { get; set; }
+    [JsonPropertyName("profile")] public PlayerIdentity? Identity { get; set; }
+}
+
+public sealed class PlayerIdentity
+{
+    [JsonPropertyName("personaname")] public string? Name { get; set; }
+    [JsonPropertyName("account_id")] public long? AccountId { get; set; }
+}
 
 public sealed record RankOption(int Id, string Label)
 {
