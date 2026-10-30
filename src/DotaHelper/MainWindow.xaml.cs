@@ -45,6 +45,21 @@ public partial class MainWindow : Window
             _viewModel.ClearSlot(slot);
     }
 
+    private void ClearDraft_Click(object sender, RoutedEventArgs e)
+    {
+        if (MessageBox.Show(this,
+            "Очистить выбранных союзников и противников? Настройки и избранное сохранятся.",
+            "Очистка драфта", MessageBoxButton.YesNo, MessageBoxImage.Question)
+            == MessageBoxResult.Yes)
+        {
+            _debounce.Stop();
+            _viewModel.ClearDraft();
+        }
+    }
+
+    private void ClearSearch_Click(object sender, RoutedEventArgs e) =>
+        _viewModel.ClearRecommendationSearch();
+
     private async void ToggleFavorite_Click(object sender, RoutedEventArgs e) =>
         await _viewModel.ToggleFavoriteAsync();
 
