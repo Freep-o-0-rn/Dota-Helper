@@ -37,9 +37,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
     ];
     public IReadOnlyList<PoolOption> PoolOptions { get; } =
     [
-        new(HeroPoolMode.Common, "Без редких (4/5: стандарт)"),
-        new(HeroPoolMode.All, "Все (4/5: стандарт)"),
-        new(HeroPoolMode.Favorites, "Избранные (4/5: стандарт)"),
+        new(HeroPoolMode.Common, "По роли, без редких"),
+        new(HeroPoolMode.All, "Все подходящие по роли"),
+        new(HeroPoolMode.Favorites, "Избранные по роли"),
         new(HeroPoolMode.Experimental, "Эксперимент: все герои")
     ];
 
@@ -199,7 +199,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             ? "Внимание: /heroStats недоступен. Популярность и общий WR отсутствуют; оценки предварительные."
             : unavailable > 0
                 ? $"Недоступны матчапы для {unavailable} врагов. Показаны частичные данные."
-                : "0.2.1: позиции 4/5 — ручной список. Общий WR по всем ролям. Текущий патч не учтён.";
+                : "0.3: роли 1–5 — ручные пулы; WR по всем ролям. Патч, синергии и статистика линий не учтены.";
     }
 
     private async Task SavePreferencesAsync()
