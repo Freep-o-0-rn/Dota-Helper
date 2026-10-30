@@ -392,8 +392,12 @@ public sealed class MainViewModel : INotifyPropertyChanged
         // only actual pick GSI exposes. Show it accurately in our fifth tile.
         if (ownedHero is not null)
         {
-            _gsiOwnHero = ownedHero;
-            _previewSlot.IsGsiConfirmed = true;
+            // During hero selection the local hero field can describe a
+            // hover/pre-pick. Never upgrade it to a confirmed pick.
+            var confirmed = !state.Phase.Contains("HERO_SELECTION",
+                StringComparison.OrdinalIgnoreCase);
+            _gsiOwnHero = confirmed ? ownedHero : null;
+            _previewSlot.IsGsiConfirmed = confirmed;
             _previewSlot.SelectedHero = ownedHero;
         }
 

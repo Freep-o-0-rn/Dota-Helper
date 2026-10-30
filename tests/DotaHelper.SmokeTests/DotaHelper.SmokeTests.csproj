@@ -19,6 +19,7 @@
     <Compile Include="../../src/DotaHelper/Services/HeroSearch.cs" Link="HeroSearch.cs" />
     <Compile Include="../../src/DotaHelper/Services/DotaGsiService.cs" Link="DotaGsiService.cs" />
     <Compile Include="../../src/DotaHelper/Services/ScreenDraftReader.cs" Link="ScreenDraftReader.cs" />
+    <Compile Include="../../src/DotaHelper/Services/AutoDotaWindow.cs" Link="AutoDotaWindow.cs" />
     <Compile Include="../../src/DotaHelper/Services/OpenDotaClient.cs" Link="OpenDotaClient.cs" />
   </ItemGroup>
 </Project>

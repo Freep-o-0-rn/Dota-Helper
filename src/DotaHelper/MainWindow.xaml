@@ -1,7 +1,7 @@
 <Window x:Class="DotaHelper.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Dota Helper — Draft Assistant 0.11"
+        Title="Dota Helper — Draft Assistant 0.12"
         Width="1520" Height="850" MinWidth="1120" MinHeight="690"
         Background="#101722" Foreground="#E9F0F5" FontFamily="Segoe UI"
         Loaded="Window_Loaded">
@@ -368,7 +368,7 @@
                     <TextBlock Text="DOTA HELPER" FontSize="21" FontWeight="Bold"
                                Foreground="#E0B76F"/>
                     <DockPanel>
-                        <TextBlock Text="DRAFT ASSISTANT · 0.11" FontSize="10"
+                        <TextBlock Text="DRAFT ASSISTANT · 0.12" FontSize="10"
                                    Foreground="#9AAEBF" Margin="0,0,15,0"/>
                         <TextBlock Text="{Binding PatchDisplay}" FontSize="10"
                                    Foreground="#80CDB7"/>
@@ -426,7 +426,7 @@
                                 BorderThickness="1" CornerRadius="9"
                                 Padding="8" Margin="0,12,0,0">
                             <StackPanel>
-                                <TextBlock Text="АВТОМАТИЧЕСКИЙ ДРАФТ"
+                                <TextBlock Text="GSI · АВТОПОДКЛЮЧЕНИЕ"
                                            Foreground="#76D0BF" FontSize="11"
                                            FontWeight="Bold" Margin="0,0,0,6"/>
                                 <Button x:Name="GsiButton" Content="Подключить Dota 2"
@@ -442,20 +442,26 @@
                                 BorderThickness="1" CornerRadius="9"
                                 Padding="8" Margin="0,9,0,0">
                             <StackPanel>
-                                <TextBlock Text="ЭКРАННЫЙ ALL PICK"
+                                <TextBlock Text="ЭКРАННЫЙ ALL PICK · АВТО"
                                            Foreground="#C5B3F5" FontSize="11"
                                            FontWeight="Bold" Margin="0,0,0,6"/>
-                                <Button Content="Настроить области экрана"
-                                        Click="CalibrateScreen_Click"
-                                        Background="#4C456E" FontSize="11"/>
-                                <Button x:Name="ScreenStartButton"
-                                        Content="Начать сканирование"
-                                        Click="ToggleScreen_Click"
-                                        Background="#4E5574" FontSize="11"
-                                        Margin="0,5,0,0"/>
                                 <TextBlock Text="{Binding ScreenStatus}"
                                            Foreground="#B8C3DE" FontSize="10"
                                            TextWrapping="Wrap" Margin="0,7,0,0"/>
+                                <Expander Header="Ручное управление (необязательно)"
+                                          IsExpanded="False" Foreground="#9EB2C9"
+                                          Margin="0,7,0,0">
+                                    <StackPanel Margin="0,6,0,0">
+                                        <Button x:Name="ScreenStartButton"
+                                                Content="Остановить сканирование"
+                                                Click="ToggleScreen_Click"
+                                                Background="#4E5574" FontSize="11"/>
+                                        <Button Content="Резервная разметка областей"
+                                                Click="CalibrateScreen_Click"
+                                                Background="#4C456E" FontSize="11"
+                                                Margin="0,5,0,0"/>
+                                    </StackPanel>
+                                </Expander>
                                 <TextBlock Text="Эксперимент: распознаются только видимые портреты и красные перечёркивания. Неуверенные результаты игнорируются."
                                            Foreground="#8896B6" FontSize="10"
                                            TextWrapping="Wrap" Margin="0,6,0,0"/>
