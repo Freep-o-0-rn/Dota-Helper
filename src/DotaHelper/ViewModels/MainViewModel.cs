@@ -21,11 +21,42 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private Recommendation? _selectedRecommendation;
     private RankOption? _selectedRank;
     private PoolOption? _selectedPool;
+    private string _heroSearchText = "";
 
     public ObservableCollection<Hero> Heroes { get; } = [];
     public ObservableCollection<DraftSlot> Allies { get; } = [];
     public ObservableCollection<DraftSlot> Enemies { get; } = [];
     public ObservableCollection<Recommendation> Recommendations { get; } = [];
+    public ObservableCollection<Recommendation> VisibleRecommendations { get; } = [];
+
+    public string HeroSearchText
+    {
+        get => _heroSearchText;
+        set
+        {
+            if (_heroSearchText == value) return;
+            _heroSearchText = value ?? "";
+            OnPropertyChanged();
+            ApplyRecommendationSearch();
+        }
+    }
+
+    public string ResultsLabel => $"Показано {VisibleRecommendations.Count} из {Recommendations.Count} подходящих героев";
+
+    private void ApplyRecommendationSearch()
+    {
+        var text = HeroSearchText.Trim();
+        var filtered = string.IsNullOrEmpty(text)
+            ? Recommendations.ToList()
+            : Recommendations.Where(r =>
+                r.Hero.Name.Contains(text, StringComparison.OrdinalIgnoreCase) ||
+                r.Hero.InternalName.Contains(text, StringComparison.OrdinalIgnoreCase)).ToList();
+
+        VisibleRecommendations.Clear();
+        foreach (var result in filtered)
+            VisibleRecommendations.Add(result);
+        OnPropertyChanged(nameof(ResultsLabel));
+    }
     public int[] Positions { get; } = [1, 2, 3, 4, 5];
 
     public IReadOnlyList<RankOption> RankOptions { get; } =
@@ -183,8 +214,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
         Recommendations.Clear();
         foreach (var item in ranked) Recommendations.Add(item);
+        ApplyRecommendationSearch();
         SelectedRecommendation = priorSelectionId.HasValue
-            ? Recommendations.FirstOrDefault(r => r.Hero.Id == priorSelectionId.Value)
+            ? VisibleRecommendations.FirstOrDefault(r => r.Hero.Id == priorSelectionId.Value)
             : null;
 
         var unavailable = results.Count(r => r.Error);
