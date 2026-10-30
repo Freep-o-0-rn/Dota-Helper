@@ -320,10 +320,12 @@ Check(patch.Number == "7.41f" && patch.DisplayLabel.Contains("7.41f"),
     "Official Valve patch feed parser must identify newest patch");
 Check(PatchInfoClient.Parse(patchFixture, true).FromStaleCache,
     "Stale Valve patch list must be disclosed");
-var reversed = """{"patches":[
+var reversed = """
+{"patches":[
  {"patch_number":"7.41","patch_timestamp":1774335600},
  {"patch_number":"7.41f","patch_timestamp":1789455600}
-]}""";
+]}
+""";
 Check(PatchInfoClient.Parse(reversed).Number == "7.41f",
     "Patch parser must sort by published UTC timestamp, not list position");
 try
