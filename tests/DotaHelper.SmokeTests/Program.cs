@@ -356,4 +356,41 @@ Check(highEvidence.ReliabilityLabel.Contains("высокая") &&
       lowEvidence.ReliabilityLabel.Contains("низкая"),
     "Show quality based on weighted sample size and matchup coverage");
 
-Console.WriteLine("Dota Helper 0.8 patch and evidence confidence tests passed.");
+// Role eligibility remains fully empirical: Riki is allowed as mid
+// when actual games support it in either hero pool. Frequency is
+// shown separately from skill or win probability.
+var riki = new Hero { Id = 32, Name = "Riki", InternalName = "npc_dota_hero_riki" };
+var snapfire = new Hero { Id = 128, Name = "Snapfire", InternalName = "npc_dota_hero_snapfire" };
+var fringe = new Hero { Id = 999, Name = "Niche", InternalName = "npc_dota_hero_niche" };
+var roleEvidence = PositionEvidence.Index([
+    new PositionSample(32, 1, 600, 300),
+    new PositionSample(32, 2, 350, 195),
+    new PositionSample(32, 4, 50, 20),
+    new PositionSample(128, 2, 400, 210),
+    new PositionSample(128, 4, 900, 450),
+    new PositionSample(999, 2, 30, 15),
+    new PositionSample(999, 1, 570, 280)
+]);
+var rikiRole = PositionEvidence.Evaluate(roleEvidence, 32, 2);
+var nicheRole = PositionEvidence.Evaluate(roleEvidence, 999, 2);
+Check(rikiRole.Eligible && rikiRole.Category == "Частая",
+    "Riki must not be excluded from mid merely by archetype");
+Check(nicheRole.Eligible && nicheRole.Category == "Редкая",
+    "Borderline 30-game role evidence must remain visible but marked as rare");
+Check(rikiRole.ScoreAdjustment > nicheRole.ScoreAdjustment,
+    "A 30-game marginal role must not get the same bonus as established mid usage");
+Check(nicheRole.ScoreAdjustment <= 0.0,
+    "Marginal usage must not grant a large role bonus");
+Check(PositionEvidence.Evaluate(roleEvidence, 128, 2).Eligible,
+    "Snapfire should also qualify as a data-driven mid option");
+var allMids = engine.Rank([riki, snapfire, fringe], [], [], 2,
+    new HashSet<int>(), emptyMatchups, null, 0, HeroPoolMode.All,
+    observedPositions: roleEvidence);
+Check(allMids.Count == 3 &&
+      allMids.Any(x => x.Hero.Id == 32) &&
+      allMids.Any(x => x.Hero.Id == 128),
+    "Both Riki and Snapfire mid must appear if real position samples support them");
+Check(allMids.Single(x => x.Hero.Id == 32).CompactRole.Contains("35%") &&
+      allMids.Single(x => x.Hero.Id == 999).PositionLabel.Contains("редкая"),
+    "Short and detailed labels must expose role usage without inventing strength");
+Console.WriteLine("Dota Helper 0.8.1 position familiarity checks passed.");

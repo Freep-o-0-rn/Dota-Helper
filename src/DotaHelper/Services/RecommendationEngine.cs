@@ -171,15 +171,14 @@ public sealed class RecommendationEngine
                 ? Math.Clamp(allyEdgeSum / pickedAllies.Count * 35.0, -7.0, 7.0)
                 : 0;
 
-            var isStandard = PositionEvidence.IsEligible(observed, hero.Id, position);
+            var roleUsage = PositionEvidence.Evaluate(observed, hero.Id, position);
+            var isStandard = roleUsage.Eligible;
             var sample = PositionEvidence.Find(observed, hero.Id, position);
-            var totalHeroGames = observed.TryGetValue(hero.Id, out var positionRows)
-                ? positionRows.Sum(r => (long)r.Games) : 0L;
-            var roleShare = sample is not null && totalHeroGames > 0
-                ? sample.Games / (double)totalHeroGames : 0;
-            // Empirical position eligibility is a gate, not an uncalibrated
-            // one-size-fits-all role score. Off-role experiments are penalized.
-            var roleAdjustment = isStandard ? 6.0 : -8.0;
+            var roleShare = roleUsage.Share;
+            // Eligibility alone is not enough: a 30-game niche position
+            // should not get the same role-confidence bonus as a well-observed
+            // position. Never equate role frequency with win probability.
+            var roleAdjustment = roleUsage.ScoreAdjustment;
             var favorite = favorites.Contains(hero.Id);
             double metaAdjustment = 0;
             double popularityAdjustment = 0;
@@ -230,8 +229,9 @@ public sealed class RecommendationEngine
                 (favorite ? 4 : 0), 0, 100);
 
             string roleLabel = isStandard
-                ? $"STRATZ: позиция {position}, {sample!.Games:N0} игр " +
-                  $"({roleShare:P1} всех известных игр героя)"
+                ? $"STRATZ: позиция {position} — {roleUsage.Category.ToLowerInvariant()}, " +
+                  $"{sample!.Games:N0} игр ({roleShare:P1} всех известных игр героя). " +
+                  "Частота игры на позиции не равна силе героя."
                 : sample is null
                     ? $"Нет подтверждённых матчей на позиции {position}"
                     : $"Недостаточно игр на позиции {position}: {sample.Games:N0} " +
@@ -278,6 +278,7 @@ public sealed class RecommendationEngine
                 CompactSynergy = synergyDetails.Count > 0
                     ? $"Союзники {synergyAdjustment:+0.0;-0.0;0.0}"
                     : "Союзники —",
+                CompactRole = roleUsage.ShortLabel(position),
                 CompactWinRate = compactWinRate,
                 CompactCounterpick = measured > 0
                     ? $"Контрпик {matchupAdjustment:+0.0;-0.0;0.0}"
@@ -285,7 +286,8 @@ public sealed class RecommendationEngine
                 IsRare = rare,
                 IsNonStandard = !isStandard,
                 PositionLabel = isStandard
-                    ? $"✓ STRATZ: роль {position}, {sample!.Games:N0} матчей, {roleShare:P0}"
+                    ? $"✓ STRATZ: {roleUsage.Category.ToLowerInvariant()} на роли {position}, " +
+                      $"{sample!.Games:N0} матчей, {roleShare:P0} игр героя"
                     : $"⚠ Статистика роли {position} недостаточна"
             });
         }

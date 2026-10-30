@@ -218,6 +218,7 @@ public sealed record Recommendation(
     public string CounterpickSummary { get; init; } = "";
     public string SynergySummary { get; init; } = "";
     public string CompactSynergy { get; init; } = "Союзники —";
+    public string CompactRole { get; init; } = "Роль: данных нет";
     public string CompactWinRate { get; init; } = "WR —";
     public string CompactCounterpick { get; init; } = "Контрпик —";
     public string FavoriteMark => IsFavorite ? "★" : "☆";
