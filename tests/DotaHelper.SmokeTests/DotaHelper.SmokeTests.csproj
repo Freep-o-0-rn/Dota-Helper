@@ -12,5 +12,6 @@
     <Compile Include="../../src/DotaHelper/Services/RecommendationEngine.cs" Link="RecommendationEngine.cs" />
     <Compile Include="../../src/DotaHelper/Models/PositionStats.cs" Link="PositionStats.cs" />
     <Compile Include="../../src/DotaHelper/Services/StratzClient.cs" Link="StratzClient.cs" />
+    <Compile Include="../../src/DotaHelper/Services/SteamProfileResolver.cs" Link="SteamProfileResolver.cs" />
   </ItemGroup>
 </Project>
