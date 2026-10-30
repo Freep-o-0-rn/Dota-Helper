@@ -651,3 +651,36 @@ using (var top=new System.Drawing.Bitmap(1280,720))
         "Draft bar alone must not be mistaken for a gallery of banned heroes");
 }
 Console.WriteLine("Dota Helper 0.12 automatic window-layout and pre-pick classification tests passed.");
+
+// 0.12.1: a plain gray UI tile is not evidence of a hero pre-pick.
+using (var blank = new System.Drawing.Bitmap(90, 58))
+using (var face = new System.Drawing.Bitmap(90, 58))
+{
+    using (var g = System.Drawing.Graphics.FromImage(blank))
+        g.Clear(System.Drawing.Color.FromArgb(49, 57, 68));
+    using (var g = System.Drawing.Graphics.FromImage(face))
+    {
+        g.Clear(System.Drawing.Color.FromArgb(57, 62, 68));
+        g.FillEllipse(System.Drawing.Brushes.LightGray, 20, 3, 50, 46);
+        g.FillRectangle(System.Drawing.Brushes.Gray, 40, 9, 8, 30);
+        g.DrawLine(System.Drawing.Pens.White, 10, 15, 73, 45);
+        g.DrawLine(System.Drawing.Pens.Black, 7, 38, 83, 22);
+    }
+    Check(!PortraitRecognition.HasPortraitTexture(blank),
+        "Solid gray empty HUD cells must not be counted as pre-picks");
+    Check(PortraitRecognition.HasPortraitTexture(face),
+        "Textured gray hero face remains eligible for identity recognition");
+    Check(!PortraitRecognition.IsConfirmedColor(blank) &&
+          !PortraitRecognition.IsConfirmedColor(face),
+        "Gray only determines whether an identified portrait is a pre-pick");
+}
+// A completely empty hero strip is not a valid five-portrait layout.
+using (var blank = new System.Drawing.Bitmap(1919, 1079))
+{
+    using var g = System.Drawing.Graphics.FromImage(blank);
+    g.Clear(System.Drawing.Color.FromArgb(21, 28, 37));
+    Check(AutoDraftLayout.Locate(blank) is null,
+        "No top bar should be detected on a blank scene");
+}
+Console.WriteLine("Dota Helper 0.12.1 no-phantom-prepicks and blank-layout tests passed.");
+
