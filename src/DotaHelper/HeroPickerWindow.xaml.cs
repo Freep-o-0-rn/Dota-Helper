@@ -8,7 +8,7 @@ namespace DotaHelper;
 /// <summary>Virtualized, searchable original Valve-portrait hero picker.</summary>
 public partial class HeroPickerWindow : Window
 {
-    private readonly List<Hero> _heroes;
+    private List<Hero> _heroes = [];
     public Hero? SelectedHero { get; private set; }
 
     public HeroPickerWindow(IEnumerable<Hero> heroes, string caption, Hero? selected = null)
