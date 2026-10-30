@@ -40,6 +40,11 @@ public sealed class RecommendationEngine
         var medianPicks = knownPicks.Length == 0 ? 0.0 : knownPicks[knownPicks.Length / 2];
         var rareCutoff = knownPicks.Length < 10 ? 0L
             : knownPicks[(int)((knownPicks.Length - 1) * 0.25)];
+        // Treat tied least-played heroes equally; do not filter at all when
+        // distribution is flat (quantile equals median).
+        bool IsRare(int heroId) =>
+            rareCutoff > 0 && rareCutoff < medianPicks &&
+            heroPicks.GetValueOrDefault(heroId) <= rareCutoff;
 
         // Conditional broad-pool mode: exclude only the lowest quarter by pick
         // count, and only when bracket data is available. Show rare picks in All.
@@ -47,8 +52,7 @@ public sealed class RecommendationEngine
         {
             if (alreadyPicked.Contains(hero.Id)) return false;
             if (pool == HeroPoolMode.Favorites) return favorites.Contains(hero.Id);
-            if (pool == HeroPoolMode.Common && rareCutoff > 0 &&
-                heroPicks.GetValueOrDefault(hero.Id) < rareCutoff) return false;
+            if (pool == HeroPoolMode.Common && IsRare(hero.Id)) return false;
             return true;
         });
 
@@ -93,7 +97,7 @@ public sealed class RecommendationEngine
             string metaLabel = "Общий WR: недостаточно данных";
             string popularityLabel = "Пики: недостаточно данных";
             var picks = heroPicks.GetValueOrDefault(hero.Id);
-            bool rare = rareCutoff > 0 && picks < rareCutoff;
+            bool rare = IsRare(hero.Id);
 
             if (stats.TryGetValue(hero.Id, out var record))
             {
