@@ -116,6 +116,7 @@ public sealed class RecommendationEngine
             var favorite = favorites.Contains(hero.Id);
             double metaAdjustment = 0;
             double popularityAdjustment = 0;
+            string compactWinRate = "WR —";
             var sourceName = professionalMeta ? "Профи" : "По рангу";
             string metaLabel = $"{sourceName}: WR (все роли) — нет данных";
             string popularityLabel = $"{sourceName}: популярность — нет данных";
@@ -131,6 +132,7 @@ public sealed class RecommendationEngine
                     var winRate = (w + 100.0) / (p + 200.0);
                     metaAdjustment = Math.Clamp((winRate - .5) * 40.0, -5.0, 5.0);
                     metaLabel = $"{sourceName}: WR (все роли) {100.0 * w / p:F1}% ({p:N0} пиков)";
+                    compactWinRate = $"WR {100.0 * w / p:F1}%";
                 }
 
                 if (p > 0 && totalPicks > 0)
@@ -176,6 +178,10 @@ public sealed class RecommendationEngine
                 EvidenceLabel = evidence,
                 ScoreBreakdown = contributions,
                 CounterpickSummary = counterSummary,
+                CompactWinRate = compactWinRate,
+                CompactCounterpick = measured > 0
+                    ? $"Контрпик {matchupAdjustment:+0.0;-0.0;0.0}"
+                    : "Контрпик —",
                 IsRare = rare,
                 IsNonStandard = !isStandard,
                 PositionLabel = isStandard
