@@ -4,6 +4,15 @@
 
 Dota drafting assistant first, tactical observer later. Never read hidden game memory or automate gameplay.
 
+## 0.3 — all five positions (implemented)
+
+- Position 1: carry, position 2: mid, position 3: offlane, position 4: soft support, position 5: hard support.
+- Every standard-pool mode enforces a conservative role-specific whitelist for ALL FIVE positions.
+- Off-role favorites cannot override the role constraint. Only explicit Experimental mode relaxes it.
+- Wraith King is eligible as carry but not offlane/mid/support in this baseline; Shadow Fiend as carry/mid; Axe as offlane; Rubick and Crystal Maiden as support. Nonstandard choices are possible in real Dota, which is why Experimental exists.
+- Regression tests explicitly verify roles 1–5. No position-specific empirical patch winrates are claimed.
+- Priority: replace provisional hand-curated pools with STRATZ or another verified, dated, position-specific data feed plus sample confidence.
+
 ## 0.2.1 — support position filter (implemented)
 
 - Standard pos 4 and 5 pools are now conservative, explicit, separately maintained lists by internal hero slug.
