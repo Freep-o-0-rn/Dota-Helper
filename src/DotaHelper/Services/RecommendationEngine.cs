@@ -52,7 +52,7 @@ public sealed class RecommendationEngine
         {
             if (alreadyPicked.Contains(hero.Id)) return false;
             if (pool == HeroPoolMode.Favorites) return favorites.Contains(hero.Id);
-            if (pool == HeroPoolMode.Common && IsRare(hero.Id)) return false;
+            if (pool == HeroPoolMode.Common && !favorites.Contains(hero.Id) && IsRare(hero.Id)) return false;
             return true;
         });
 
