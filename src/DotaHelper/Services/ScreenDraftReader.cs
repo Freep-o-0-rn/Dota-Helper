@@ -40,7 +40,8 @@ public sealed record ScreenDraftObservation(
     int DirePrePicks = 0,
     bool HasTopBar = false,
     bool HasHeroGallery = false,
-    int RedSlashCandidates = 0);
+    int RedSlashCandidates = 0,
+    int UnknownSlots = 0);
 
 /// <summary>
 /// Pure managed template similarity for the 10 on-screen pick rectangles and
@@ -106,6 +107,33 @@ public static class PortraitRecognition
         // Tested against real Witch Doctor gray pre-pick and colored lock-in
         // crops. Purple/blue portraits have lower R/G/B spread than red art.
         return total>0 && vivid/(double)total>.14;
+    }
+
+    public static bool HasPortraitTexture(Bitmap image)
+    {
+        // Empty draft slots and UI backgrounds are often gray, but this
+        // alone never means a pre-pick. Require a textured face first.
+        double sum = 0, sum2 = 0, edges = 0;
+        int n = 0;
+        for (int y = image.Height / 9; y < image.Height * 8 / 9; y += 2)
+        for (int x = image.Width / 9; x < image.Width * 8 / 9; x += 2)
+        {
+            var c = image.GetPixel(x, y);
+            var luma = (c.R * .299 + c.G * .587 + c.B * .114);
+            sum += luma;
+            sum2 += luma * luma;
+            if (x + 2 < image.Width)
+            {
+                var next = image.GetPixel(x + 2, y);
+                var adjacent = next.R * .299 + next.G * .587 + next.B * .114;
+                edges += Math.Abs(luma - adjacent);
+            }
+            n++;
+        }
+        if (n < 20) return false;
+        var standardDeviation = Math.Sqrt(Math.Max(0, sum2 / n -
+            (sum / n) * (sum / n)));
+        return standardDeviation >= 19 && edges / n >= 9;
     }
 
     public static double Similarity(double[] a, double[] b)
@@ -297,9 +325,16 @@ public sealed class ScreenDraftReader : IDisposable
                     (hero.PortraitUrl,Path.Combine(_templateDir,$"{hero.Id}-wide.png"))
                 };
                 if(slug.Length>0 && slug.All(c => char.IsAsciiLetterOrDigit(c)||c=='_'))
+                {
                     paths.Add((
                         $"https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/heroes/crops/{slug}.png",
                         Path.Combine(_templateDir,$"{hero.Id}-crop.png")));
+                    // In-game selection portraits are tall, unlike the
+                    // horizontal hero banners used by the old engine.
+                    paths.Add((
+                        $"https://cdn.cloudflare.steamstatic.com/apps/dota2/images/heroes/{slug}_vert.jpg",
+                        Path.Combine(_templateDir,$"{hero.Id}-vert.jpg")));
+                }
                 foreach(var (url,file) in paths)
                 {
                     try
@@ -389,7 +424,7 @@ public sealed class ScreenDraftReader : IDisposable
     {
         if(_variants.Count<20)
             return new(new RecognizedHero?[5],new RecognizedHero?[5],[]);
-        int radiantPre=0,direPre=0;
+        int radiantPre=0,direPre=0,unknown=0;
         IReadOnlyList<RecognizedHero?> Picks(ScreenArea area,bool radiant)
         {
             var result = new List<RecognizedHero?>();
@@ -397,20 +432,45 @@ public sealed class ScreenDraftReader : IDisposable
             {
                 var left=area.X+(int)Math.Round(i*area.Width/5d);
                 var right=area.X+(int)Math.Round((i+1)*area.Width/5d);
-                // Trim borders and player text, sample actual portrait interior.
-                var x=left+Math.Max(1,(right-left)/10);
-                var y=area.Y+Math.Max(1,area.Height/9);
-                var w=right-left-2*Math.Max(1,(right-left)/10);
-                var h=area.Height-2*Math.Max(1,area.Height/9);
-                using var cell=screen.Clone(new Rectangle(x,y,w,h),
-                    PixelFormat.Format24bppRgb);
+                // The row pitch includes a gap after every hero. The
+                // portrait uses roughly 86% of that pitch; sampling the
+                // whole fifth would blend neighbouring heroes.
+                var pitch=right-left;
+                var x=left+Math.Max(2,pitch/18);
+                var y=area.Y+Math.Max(1,area.Height/18);
+                var w=Math.Max(18,(int)(pitch*.86)-Math.Max(2,pitch/18)*2);
+                var h=area.Height-2*Math.Max(1,area.Height/18);
+                var rect=Rectangle.Intersect(new Rectangle(x,y,w,h),
+                    new Rectangle(0,0,screen.Width,screen.Height));
+                if(rect.Width<18||rect.Height<16)
+                {
+                    result.Add(null);
+                    continue;
+                }
+                using var cell=screen.Clone(rect,PixelFormat.Format24bppRgb);
+                // Phase 1: an actual portrait must be present. Gray blank
+                // placeholders are *not* prepicks.
+                if(!PortraitRecognition.HasPortraitTexture(cell))
+                {
+                    result.Add(null);
+                    continue;
+                }
+                // Phase 2: identity must be known before saying "prepick".
+                var candidate=Recognize(cell,.76,.075);
+                if(candidate is null)
+                {
+                    unknown++;
+                    result.Add(null);
+                    continue;
+                }
+                // Phase 3: only identified gray hero = preliminary hover.
                 if(!PortraitRecognition.IsConfirmedColor(cell))
                 {
                     if(radiant) radiantPre++; else direPre++;
-                    result.Add(null); // gray = pre-pick, NEVER an actual pick
+                    result.Add(null);
                     continue;
                 }
-                result.Add(Recognize(cell,.82,.095));
+                result.Add(candidate);
             }
             return result;
         }
@@ -442,7 +502,7 @@ public sealed class ScreenDraftReader : IDisposable
         }
         return new(Picks(radiantArea,true),Picks(direArea,false),
             detectedBans.Values.ToArray(),radiantPre,direPre,
-            true,hasGallery,candidates.Count);
+            true,hasGallery,candidates.Count,unknown);
     }
 
     public void Dispose() => _http.Dispose();
