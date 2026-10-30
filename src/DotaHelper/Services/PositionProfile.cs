@@ -41,7 +41,7 @@ public static class PositionProfile
         "brewmaster", "bristleback", "centaur", "chaos_knight",
         "dark_seer", "dawnbreaker", "death_prophet", "doom_bringer",
         "dragon_knight", "earthshaker", "elder_titan", "enigma",
-        "furion", "legion_commander", "lycan", "magnataur",
+        "furion", "largo", "legion_commander", "lycan", "magnataur",
         "mars", "necrolyte", "night_stalker", "omniknight",
         "pangolier", "primal_beast", "pudge", "razor",
         "sand_king", "shredder", "slardar", "spirit_breaker",
