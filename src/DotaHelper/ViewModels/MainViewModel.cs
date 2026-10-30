@@ -27,6 +27,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private int _revision;
     private string _status = "Загрузка...";
     private string _gsiStatus = "GSI: не подключён. Нажми «Подключить Dota 2».";
+    private string _screenStatus = "Экран: выключен. Сначала настрой области игры.";
     private long? _gsiMatchId;
     private Hero? _gsiOwnHero;
     private readonly Dictionary<DraftSlot, int> _gsiOwnedPicks = [];
@@ -344,6 +345,18 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     public void SetGsiStatus(string status) => GsiStatus = status;
 
+    public string ScreenStatus
+    {
+        get => _screenStatus;
+        private set
+        {
+            if (_screenStatus == value) return;
+            _screenStatus = value;
+            OnPropertyChanged();
+        }
+    }
+    public void SetScreenStatus(string status) => ScreenStatus = status;
+
     /// <summary>
     /// Apply only picks/bans actually sent by the local Dota 2 client.
     /// Never invent hidden All Pick information or erase manual slots when
@@ -445,10 +458,16 @@ public sealed class MainViewModel : INotifyPropertyChanged
         // The gallery shows match-wide bans without team attribution in
         // All Pick. Captains Mode needs known per-team data from GSI.
         if (IsAllPick)
+        {
+            var pickedIds = Allies.Concat(Enemies)
+                .Where(s => s.SelectedHero is not null)
+                .Select(s => s.SelectedHero!.Id).ToHashSet();
             changes += GsiDraftApplier.MergeBans(
-                observation.BannedHeroes.Select(x => x.HeroId),
+                observation.BannedHeroes.Select(x => x.HeroId)
+                    .Where(id => !pickedIds.Contains(id)),
                 AllPickBans.ToList(), heroes,
                 (slot,id) => _screenOwnedBans[slot] = id);
+        }
         return changes;
     }
 
