@@ -568,3 +568,39 @@ previewSlot.IsGsiConfirmed = false;
 Check(previewSlot.PreviewText.Contains("ПРЕДПРОСМОТР"),
     "The own hero preview can be restored after clearing the game");
 Console.WriteLine("Dota Helper 0.10 local GSI parsing and live-draft merge tests passed.");
+
+
+// 0.11 — synthetic deterministic screen recognition checks.
+using (var image = new System.Drawing.Bitmap(80, 46,
+    System.Drawing.Imaging.PixelFormat.Format24bppRgb))
+using (var graphics = System.Drawing.Graphics.FromImage(image))
+{
+    graphics.Clear(System.Drawing.Color.FromArgb(22, 33, 51));
+    graphics.FillRectangle(System.Drawing.Brushes.Cyan, 3, 4, 19, 29);
+    graphics.FillEllipse(System.Drawing.Brushes.Gold, 30, 10, 40, 26);
+    var a = PortraitRecognition.Signature(image);
+    Check(a.Length == 24 * 14 && PortraitRecognition.Similarity(a, a) > .999,
+        "Screen matching must preserve deterministic normalized grayscale signatures");
+    var b = new Dictionary<int, double[]>
+    {
+        [101] = a, [102] = a.Select((v,i) => v * (i%2==0?1:-1)).ToArray()
+    };
+    Check(PortraitRecognition.Match(a, b)?.HeroId == 101,
+        "Confident hero portrait must match the expected ID");
+    Check(PortraitRecognition.Match(new double[a.Length], b) is null,
+        "A solid/empty slot must never be interpreted as a hero");
+
+    using var slash = new System.Drawing.Pen(System.Drawing.Color.FromArgb(238, 58, 88), 3);
+    graphics.DrawLine(slash, 11, 35, 59, 4);
+    var regions = PortraitRecognition.FindRedBanSlashes(image,
+        new ScreenArea(0, 0, 80, 46));
+    Check(regions.Any(r => r.Width >= 14 && r.Height >= 7),
+        "Red diagonal lines over a hero gallery must be recognized as ban candidates");
+}
+var calibration = new DraftScreenCalibration(1920, 1080,
+    new ScreenArea(60, 10, 500, 60), new ScreenArea(1200, 10, 500, 60),
+    new ScreenArea(30, 100, 1600, 750));
+Check(calibration.Valid && !(calibration with {
+    DirePicks = new ScreenArea(2000, 30, 500, 60) }).Valid,
+    "Calibration must not accept regions outside the physical display");
+Console.WriteLine("Dota Helper 0.11 screenshot pick and ban recognition smoke tests passed.");
