@@ -81,9 +81,12 @@ public partial class HeroPickerWindow : Window
     {
         var query = SearchBox.Text;
         var matches = 0;
+        // Only try an alternate keyboard layout when there are no direct
+        // name/nickname matches. "ам" is Anti-Mage, not Faceless Void ("fv").
+        var eligible = HeroSearch.MatchingIds(_heroes, query);
         foreach (var tile in _groups.SelectMany(group => group.Heroes))
         {
-            tile.IsMatch = HeroSearch.Matches(tile.Hero, query);
+            tile.IsMatch = eligible.Contains(tile.Hero.Id);
             if (tile.IsMatch) matches++;
         }
         CounterLabel.Text = string.IsNullOrWhiteSpace(query)

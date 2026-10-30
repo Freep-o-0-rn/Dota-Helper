@@ -469,4 +469,26 @@ using (var ruDocument = JsonDocument.Parse(ruFixture))
           localized[104] == "Легион-командир",
         "Official Valve RU feed must be parsed by hero ID and exclude English fallback");
 }
-Console.WriteLine("Dota Helper 0.9.1 Russian aliases and fixed-grid hero search tests passed.");
+// UI search only falls back to a different keyboard layout when needed.
+var antiMageHero = new Hero
+{
+    Id = 1, Name = "Anti-Mage", InternalName = "npc_dota_hero_antimage"
+};
+var voidHero = new Hero
+{
+    Id = 2, Name = "Faceless Void", InternalName = "npc_dota_hero_faceless_void"
+};
+var testRoster = new[] { antiMageHero, voidHero, wd, shadowDemon, legion };
+var russianAm = HeroSearch.MatchingIds(testRoster, "ам");
+Check(russianAm.SetEquals([1]),
+    "Russian AM abbreviation must highlight Anti-Mage only, not Faceless Void through 'fv'");
+Check(HeroSearch.MatchingIds(testRoster, "fv").SetEquals([2]),
+    "English FV should still match Faceless Void");
+Check(HeroSearch.MatchingIds(testRoster, "dl").SetEquals([30]),
+    "Wrong-layout VD must still match Witch Doctor when direct matches are absent");
+Check(HeroSearch.MatchingIds(testRoster, "шд").SetEquals([79]),
+    "Russian SHD must match Shadow Demon only");
+Check(HeroSearch.MatchingIds(testRoster, "").Count == testRoster.Length,
+    "Empty search highlights all portraits");
+
+Console.WriteLine("Dota Helper 0.9.2 portrait dimensions and keyboard-fallback tests passed.");

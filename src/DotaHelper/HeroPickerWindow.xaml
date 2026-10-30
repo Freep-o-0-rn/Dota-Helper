@@ -57,7 +57,7 @@
             <Button Tag="{Binding}" Click="Hero_Click"
                     ToolTip="{Binding Hero.Name}"
                     ToolTipService.ShowOnDisabled="True"
-                    Width="43" Height="53" Padding="0" Margin="2"
+                    Width="43" Height="29" Padding="0" Margin="2"
                     Background="#172532">
                 <Button.Style>
                     <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
@@ -70,11 +70,15 @@
                         </Style.Triggers>
                     </Style>
                 </Button.Style>
-                <Border CornerRadius="4" ClipToBounds="True"
+                <Border CornerRadius="3" ClipToBounds="True"
                         BorderBrush="#3F5365" BorderThickness="1">
                     <Grid>
+                        <!-- Keep the complete horizontal Valve portrait visible:
+                             never crop a wide banner into a tall tile. -->
                         <Image Source="{Binding Hero.PortraitUrl}"
-                               Stretch="UniformToFill"
+                               Stretch="Uniform"
+                               HorizontalAlignment="Center"
+                               VerticalAlignment="Center"
                                RenderOptions.BitmapScalingMode="HighQuality"/>
                         <!-- Grey neutral overlay only on nonmatching heroes. -->
                         <Border Background="#B45B626A"
@@ -130,9 +134,9 @@
                     <DataTemplate>
                         <Border Background="#17232E" BorderBrush="#324557"
                                 BorderThickness="1" CornerRadius="7"
-                                Padding="7" Margin="3" MinHeight="360">
+                                Padding="6" Margin="3">
                             <StackPanel>
-                                <DockPanel Margin="2,1,0,8">
+                                <DockPanel Margin="2,1,0,6">
                                     <TextBlock Text="{Binding Glyph}" FontSize="16"
                                                Foreground="{Binding Accent}"
                                                Margin="0,0,6,0"/>

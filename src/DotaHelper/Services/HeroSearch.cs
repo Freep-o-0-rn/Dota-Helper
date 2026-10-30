@@ -155,7 +155,28 @@ public static class HeroSearch
         ['u']="у", ['v']="в", ['w']="в", ['x']="кс", ['y']="й", ['z']="з"
     };
 
-    public static bool Matches(Hero hero, string? input)
+    public static bool Matches(Hero hero, string? input) =>
+        MatchesCore(hero, input, allowWrongLayout: true);
+
+    public static bool MatchesDirect(Hero hero, string? input) =>
+        MatchesCore(hero, input, allowWrongLayout: false);
+
+    /// <summary>
+    /// Prefer direct Cyrillic/Latin names and nicknames. Keyboard-layout
+    /// fallback is used ONLY when there are zero direct matches across the
+    /// entire roster; otherwise short aliases like "ам" also match "fv".
+    /// </summary>
+    public static IReadOnlySet<int> MatchingIds(
+        IEnumerable<Hero> heroes, string? input)
+    {
+        var roster = heroes.ToList();
+        var direct = roster.Where(h => MatchesDirect(h, input))
+            .Select(h => h.Id).ToHashSet();
+        if (direct.Count != 0) return direct;
+        return roster.Where(h => Matches(h, input)).Select(h => h.Id).ToHashSet();
+    }
+
+    private static bool MatchesCore(Hero hero, string? input, bool allowWrongLayout)
     {
         var query = Normalize(input);
         if (query.Length == 0) return true;
@@ -172,12 +193,12 @@ public static class HeroSearch
         if (Nicknames.TryGetValue(slug, out var aliases))
             names.AddRange(aliases);
 
-        var variants = new HashSet<string>(StringComparer.Ordinal)
+        var variants = new HashSet<string>(StringComparer.Ordinal) { query };
+        if (allowWrongLayout)
         {
-            query,
-            Normalize(SwapLayout(input ?? "", EnglishKeys, RussianKeys)),
-            Normalize(SwapLayout(input ?? "", RussianKeys, EnglishKeys)),
-        };
+            variants.Add(Normalize(SwapLayout(input ?? "", EnglishKeys, RussianKeys)));
+            variants.Add(Normalize(SwapLayout(input ?? "", RussianKeys, EnglishKeys)));
+        }
 
         foreach (var name in names)
         {
