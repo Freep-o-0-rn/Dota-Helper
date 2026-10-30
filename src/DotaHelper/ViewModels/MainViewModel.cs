@@ -12,6 +12,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
 {
     private readonly OpenDotaClient _api = new();
     private readonly StratzClient _positions = new();
+    private readonly PatchInfoClient _patches = new();
     private readonly SteamProfileResolver _steam = new();
     private readonly RecommendationEngine _engine = new();
     private readonly PreferencesStore _store = new();
@@ -22,6 +23,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private int _selectedPosition = 3;
     private int _revision;
     private string _status = "Загрузка...";
+    private string _patchDisplay = "Патч: проверка Valve · данные STRATZ исторические";
     private Recommendation? _selectedRecommendation;
     private RankOption? _selectedRank;
     private PoolOption? _selectedPool;
@@ -217,6 +219,12 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
     }
 
+    public string PatchDisplay
+    {
+        get => _patchDisplay;
+        private set { _patchDisplay = value; OnPropertyChanged(); }
+    }
+
     public string Status
     {
         get => _status;
@@ -273,6 +281,17 @@ public sealed class MainViewModel : INotifyPropertyChanged
         catch
         {
             _statsAvailable = false;
+        }
+        // Valve's patch list is an independent status indicator. We do not
+        // use its patch number to relabel historical STRATZ aggregates.
+        try
+        {
+            var patch = await _patches.GetCurrentAsync();
+            PatchDisplay = patch.DisplayLabel + " · STRATZ: несколько патчей";
+        }
+        catch (Exception)
+        {
+            PatchDisplay = "Патч Valve не определён · STRATZ: исторические данные";
         }
         if (_preferences.PlayerAccountId is > 0)
             await LoadPlayerProfileAsync();
