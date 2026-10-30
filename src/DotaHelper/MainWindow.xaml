@@ -1,7 +1,7 @@
 <Window x:Class="DotaHelper.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Dota Helper — Draft Assistant 0.3" Height="830" Width="1420"
+        Title="Dota Helper — Draft Assistant 0.3.1" Height="830" Width="1420"
         MinWidth="1120" MinHeight="670"
         Background="#10141D" Foreground="#E5EAF2"
         FontFamily="Segoe UI" Loaded="Window_Loaded">
@@ -44,7 +44,7 @@
                 <StackPanel>
                     <TextBlock Text="DOTA HELPER" FontSize="23" FontWeight="Bold"
                                Foreground="#D9B36F"/>
-                    <TextBlock Text="DRAFT ASSISTANT • ПРОТОТИП 0.3"
+                    <TextBlock Text="DRAFT ASSISTANT • ПРОТОТИП 0.3.1"
                                FontSize="11" Foreground="#A2ADBC"/>
                 </StackPanel>
             </DockPanel>
@@ -166,13 +166,24 @@
                         <TextBlock Text="0–100: условная оценка, НЕ вероятность победы."
                                    Foreground="#A2ADBC" TextWrapping="Wrap"
                                    Margin="0,5,0,10"/>
+                        <TextBlock Text="ПОИСК ПО РЕКОМЕНДАЦИЯМ" Foreground="#A2ADBC" FontSize="11"/>
+                        <TextBox Text="{Binding HeroSearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                 Background="#2A3442" Foreground="White" CaretBrush="White"
+                                 BorderBrush="#46596C" BorderThickness="1"
+                                 Padding="9,7" FontSize="14" MinHeight="34"
+                                 ToolTip="Начни вводить имя героя на английском, например Dark Willow"
+                                 Margin="0,5,0,4"/>
+                        <TextBlock Text="{Binding ResultsLabel}" Foreground="#A2ADBC"
+                                   FontSize="11" Margin="0,0,0,9"/>
                         <Button Content="★ Добавить / убрать из избранного"
                                 Click="ToggleFavorite_Click"
                                 HorizontalAlignment="Stretch" Margin="0,0,0,10"
                                 Background="#564A37"/>
                     </StackPanel>
                     <ListView x:Name="RecommendationsList"
-                              ItemsSource="{Binding Recommendations}"
+                              ItemsSource="{Binding VisibleRecommendations}"
+                              VirtualizingStackPanel.IsVirtualizing="True"
+                              VirtualizingStackPanel.VirtualizationMode="Recycling"
                               SelectedItem="{Binding SelectedRecommendation, Mode=TwoWay}"
                               Background="#1B2330" Foreground="#E5EAF2"
                               BorderThickness="0" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
@@ -186,6 +197,7 @@
                                                        Text="{Binding ScoreLabel}" FontWeight="Bold"
                                                        Foreground="#D9B36F"/>
                                             <StackPanel Orientation="Horizontal">
+                                                <TextBlock Text="{Binding RankLabel}" Foreground="#9AA9B8" Margin="0,0,9,0"/>
                                                 <TextBlock Text="{Binding FavoriteMark}"
                                                            Foreground="#D9B36F" Margin="0,0,8,0"/>
                                                 <TextBlock Text="{Binding Hero.Name}"
@@ -203,6 +215,9 @@
                                                    Foreground="#C0CAD5" FontSize="12"/>
                                         <TextBlock Text="{Binding RareLabel}"
                                                    Foreground="#E7B26D" FontSize="11"/>
+                                        <TextBlock Text="{Binding ScoreBreakdown}"
+                                                   TextWrapping="Wrap" FontSize="11"
+                                                   Foreground="#E2C28A" Margin="0,4,0,0"/>
                                         <TextBlock Text="{Binding Explanation}"
                                                    TextWrapping="Wrap" FontSize="11"
                                                    Foreground="#95A6B9" Margin="0,4,0,0"/>
