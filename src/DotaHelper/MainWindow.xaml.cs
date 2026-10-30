@@ -48,6 +48,9 @@ public partial class MainWindow : Window
     private async void ToggleFavorite_Click(object sender, RoutedEventArgs e) =>
         await _viewModel.ToggleFavoriteAsync();
 
+    private async void CheckStratz_Click(object sender, RoutedEventArgs e) =>
+        await _viewModel.CheckStratzConnectionAsync();
+
     private async void LoadProfile_Click(object sender, RoutedEventArgs e) =>
         await _viewModel.LoadPlayerProfileAsync();
 }
