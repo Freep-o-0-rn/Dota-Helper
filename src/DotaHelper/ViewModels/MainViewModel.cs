@@ -145,8 +145,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
             }
             else if (rankTier >= 80)
             {
-                SelectedRank = RankOptions[0];
-                ProfileSummary = $"{playerName}: Immortal. Отдельных данных по рангу Immortal нет; выбрана общая выборка.";
+                SelectedRank = RankOptions.First(o => o.Id == 8);
+                ProfileSummary = $"{playerName}: Титан (медаль {rankTier}). " +
+                    "Статистика этого ранга может быть недоступна в OpenDota.";
             }
             else
             {
@@ -166,7 +167,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         new(0, "Все доступные ранги"),
         new(1, "Рекрут"), new(2, "Страж"), new(3, "Рыцарь"),
         new(4, "Герой"), new(5, "Легенда"),
-        new(6, "Властелин"), new(7, "Божество")
+        new(6, "Властелин"), new(7, "Божество"), new(8, "Титан")
     ];
     public IReadOnlyList<PoolOption> PoolOptions { get; } =
     [
