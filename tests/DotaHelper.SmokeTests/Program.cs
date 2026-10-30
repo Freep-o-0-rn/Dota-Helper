@@ -94,4 +94,36 @@ var all = engine.Rank(sampleHeroes, [], [], 5, new HashSet<int>(),
 Check(common.All(x => x.Hero.Id >= 16), "Common pool must filter the rare bottom quarter");
 Check(all.Any(x => x.Hero.Id < 16), "All pool must allow rare heroes");
 
-Console.WriteLine("Dota Helper 0.2 engine smoke tests passed.");
+// Regression: broad "Support" or "Disabler" tags and high overall winrate
+// must never make hard carries normal position 4 or 5 recommendations.
+var wk = new Hero { Id = 42, Name = "Wraith King",
+    InternalName = "npc_dota_hero_skeleton_king",
+    Roles = ["Carry", "Support", "Durable", "Disabler"] };
+var naix = new Hero { Id = 54, Name = "Lifestealer",
+    InternalName = "npc_dota_hero_life_stealer", Roles = ["Carry", "Durable"] };
+var rubick = new Hero { Id = 86, Name = "Rubick",
+    InternalName = "npc_dota_hero_rubick", Roles = ["Support", "Disabler"] };
+var lich = new Hero { Id = 31, Name = "Lich",
+    InternalName = "npc_dota_hero_lich", Roles = ["Support", "Nuker"] };
+var candidates = new[] { wk, naix, rubick, lich };
+var inflated = candidates.ToDictionary(h => h.Id, h => new HeroStats
+{
+    Id = h.Id, Picks4 = 10000, Wins4 = h.Id == 42 ? 8000 : 5000
+});
+var standardFour = engine.Rank(candidates, [], [], 4, new HashSet<int> { 42 },
+    new Dictionary<int, IReadOnlyList<Matchup>>(), inflated, 4, HeroPoolMode.All);
+Check(!standardFour.Any(x => x.Hero.Id is 42 or 54),
+    "Position 4 must exclude WK and Lifestealer regardless of overall winrate");
+Check(standardFour.Any(x => x.Hero.Id == 86), "Position 4 must include Rubick");
+var standardFive = engine.Rank(candidates, [], [], 5, new HashSet<int> { 42 },
+    new Dictionary<int, IReadOnlyList<Matchup>>(), inflated, 4, HeroPoolMode.Favorites);
+Check(standardFive.Count == 0, "Off-role favorite must not bypass position filter");
+var experimental = engine.Rank(candidates, [], [], 4, new HashSet<int>(),
+    new Dictionary<int, IReadOnlyList<Matchup>>(), inflated, 4, HeroPoolMode.Experimental);
+Check(experimental.Any(x => x.Hero.Id == 42 && x.IsNonStandard),
+    "Off-role picks must appear only in explicit experimental mode with warning");
+Check(experimental[0].Hero.Id != 42,
+    "Even experimental off-role WK must not top rankings only due to global WR");
+Check(PositionProfile.IsStandard(lich, 5) && PositionProfile.IsStandard(rubick, 4),
+    "Typical supports must remain eligible");
+Console.WriteLine("Dota Helper 0.2.1 role regression tests passed.");
