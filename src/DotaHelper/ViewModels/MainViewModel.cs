@@ -270,6 +270,12 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 .GroupBy(s => s.EffectiveId)
                 .ToDictionary(g => g.Key, g => g.First());
             _statsAvailable = _heroStats.Count > 0;
+            foreach (var hero in Heroes)
+            {
+                if (_heroStats.TryGetValue(hero.Id, out var stat) &&
+                    !string.IsNullOrWhiteSpace(stat.ImagePath))
+                    hero.ImagePath = stat.ImagePath;
+            }
         }
         catch
         {
