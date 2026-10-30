@@ -216,6 +216,8 @@ public sealed record Recommendation(
     public string RankLabel => PositionInRanking > 0 ? $"#{PositionInRanking}" : "";
     public string ScoreBreakdown { get; init; } = "";
     public string CounterpickSummary { get; init; } = "";
+    public string SynergySummary { get; init; } = "";
+    public string CompactSynergy { get; init; } = "Союзники —";
     public string CompactWinRate { get; init; } = "WR —";
     public string CompactCounterpick { get; init; } = "Контрпик —";
     public string FavoriteMark => IsFavorite ? "★" : "☆";
