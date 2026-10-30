@@ -559,4 +559,12 @@ Check(seenBans == 2 && matchBans[0].SelectedHero?.Id == 1 &&
 Check(GsiDraftApplier.MergeBans(
     [1, 1, 79], matchBans, liveHeroes) == 0,
     "Repeated ban IDs must not create multiple ban tiles");
+Check(previewSlot.PreviewText.Contains("ПРЕДПРОСМОТР"), "Without GSI the own slot remains a preview");
+previewSlot.IsGsiConfirmed = true;
+Check(previewSlot.PreviewText.Contains("GSI") &&
+      previewSlot.TileHint.Contains("подтверждён"),
+    "GSI-confirmed own pick should be labeled as confirmed, not as a suggestion");
+previewSlot.IsGsiConfirmed = false;
+Check(previewSlot.PreviewText.Contains("ПРЕДПРОСМОТР"),
+    "The own hero preview can be restored after clearing the game");
 Console.WriteLine("Dota Helper 0.10 local GSI parsing and live-draft merge tests passed.");
