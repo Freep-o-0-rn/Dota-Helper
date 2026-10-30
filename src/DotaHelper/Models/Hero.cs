@@ -21,6 +21,10 @@ public sealed class Hero
     [JsonPropertyName("primary_attr")]
     public string? PrimaryAttribute { get; set; }
 
+    // Populated separately from the Valve Russian localization feed.
+    [JsonIgnore]
+    public string? RussianName { get; set; }
+
 
     [JsonPropertyName("img")]
     public string? ImagePath { get; set; }
