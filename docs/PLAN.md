@@ -4,6 +4,16 @@
 
 Dota drafting assistant first, tactical observer later. Never read hidden game memory or automate gameplay.
 
+## 0.2.1 — support position filter (implemented)
+
+- Standard pos 4 and 5 pools are now conservative, explicit, separately maintained lists by internal hero slug.
+- Wraith King, Lifestealer and other heroes outside the support pool are filtered out even with high global winrate or an OpenDota "Support"/"Disabler" tag.
+- Experimental mode permits any hero but visibly warns when outside the standard position pool.
+- Favorites cannot silently bypass this suitability gate.
+- Overall win and pick rate labels explicitly say **all positions**; these stats do not imply performance for position 4 or 5.
+- Regression tests cover Wraith King, Lifestealer, Rubick, Lich, favorites and experimental picks.
+- Next step: replace static support lists with independently verified, patch/rank-filtered observed position statistics. Do not interpret the lists as meta rankings.
+
 ## 0.2 — transparent ranking (implemented)
 
 - Manual 4 ally / 5 enemy draft and selected rank position 1–5.
