@@ -283,7 +283,7 @@
                         </Border>
                     </Grid>
                 </Button>
-                <TextBlock Text="ТВОЙ ПИК · ПРЕДПРОСМОТР"
+                <TextBlock Text="{Binding PreviewText}"
                            TextAlignment="Center" FontSize="8" Foreground="#DCC08C"
                            TextTrimming="CharacterEllipsis" Margin="0,3,0,0">
                     <TextBlock.Style>
