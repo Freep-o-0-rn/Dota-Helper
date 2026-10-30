@@ -5,6 +5,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Microsoft.Win32;
+using DotaHelper.Models;
 
 namespace DotaHelper.Services;
 
@@ -19,7 +20,8 @@ public sealed record GsiDraftState(
     IReadOnlyList<int> RadiantPicks,
     IReadOnlyList<int> DirePicks,
     IReadOnlyList<int> RadiantBans,
-    IReadOnlyList<int> DireBans)
+    IReadOnlyList<int> DireBans,
+    long? MatchId = null)
 {
     public bool HasDraft => RadiantPicks.Count + DirePicks.Count +
         RadiantBans.Count + DireBans.Count > 0;
@@ -47,6 +49,11 @@ public static class GsiDraftParser
         var player = Property(root, "player");
         var hero = Property(root, "hero");
         var phase = String(map, "game_state") ?? "unknown";
+        var matchIdElement = Property(map, "matchid");
+        if (matchIdElement.ValueKind != JsonValueKind.Number)
+            matchIdElement = Property(map, "match_id");
+        long? matchId = matchIdElement.ValueKind == JsonValueKind.Number &&
+            matchIdElement.TryGetInt64(out var id) && id > 0 ? id : null;
         var teamName = String(player, "team_name");
         bool? radiant = teamName switch
         {
@@ -88,7 +95,52 @@ public static class GsiDraftParser
             ParseTeam(draft, "team2", "pick"),
             ParseTeam(draft, "team3", "pick"),
             ParseTeam(draft, "team2", "ban"),
-            ParseTeam(draft, "team3", "ban"));
+            ParseTeam(draft, "team3", "ban"), matchId);
+    }
+}
+
+/// <summary>
+/// Conservatively merge only observed Dota GSI picks/bans into empty slots.
+/// A missing or partial GSI field must NEVER erase manually selected heroes.
+/// </summary>
+public static class GsiDraftApplier
+{
+    public static int MergePicks(IEnumerable<int> observedIds,
+        IReadOnlyList<DraftSlot> slots, IReadOnlyDictionary<int, Hero> byId,
+        int excludeHeroId = 0, Action<DraftSlot, int>? onAdded = null)
+    {
+        var changes = 0;
+        foreach (var id in observedIds.Distinct())
+        {
+            if (id <= 0 || id == excludeHeroId || !byId.TryGetValue(id, out var hero))
+                continue;
+            if (slots.Any(s => s.SelectedHero?.Id == id)) continue;
+            var slot = slots.FirstOrDefault(s => s.SelectedHero is null && !s.IsPreview);
+            if (slot is null) break;
+            slot.SelectedHero = hero;
+            onAdded?.Invoke(slot, id);
+            changes++;
+        }
+        return changes;
+    }
+
+    public static int MergeBans(IEnumerable<int> observedIds,
+        IReadOnlyList<BanSlot> slots, IReadOnlyDictionary<int, Hero> byId,
+        Action<BanSlot, int>? onAdded = null)
+    {
+        var changes = 0;
+        foreach (var id in observedIds.Distinct())
+        {
+            if (id <= 0 || !byId.TryGetValue(id, out var hero))
+                continue;
+            if (slots.Any(s => s.SelectedHero?.Id == id)) continue;
+            var slot = slots.FirstOrDefault(s => s.SelectedHero is null);
+            if (slot is null) break;
+            slot.SelectedHero = hero;
+            onAdded?.Invoke(slot, id);
+            changes++;
+        }
+        return changes;
     }
 }
 
