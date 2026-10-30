@@ -96,11 +96,13 @@ public static class PortraitRecognition
             var c=image.GetPixel(x,y);
             var high=Math.Max(c.R,Math.Max(c.G,c.B));
             var low=Math.Min(c.R,Math.Min(c.G,c.B));
-            if(high>70 && high-low>48 && (high-low)*100/Math.Max(1,(int)high)>36)
+            if(high>52 && high-low>30)
                 vivid++;
             total++;
         }
-        return total>0 && vivid/(double)total>.15;
+        // Tested against real Witch Doctor gray pre-pick and colored lock-in
+        // crops. Purple/blue portraits have lower R/G/B spread than red art.
+        return total>0 && vivid/(double)total>.14;
     }
 
     public static double Similarity(double[] a, double[] b)
