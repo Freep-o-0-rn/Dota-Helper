@@ -18,6 +18,35 @@ public sealed class Hero
     [JsonPropertyName("roles")]
     public string[] Roles { get; set; } = [];
 
+    [JsonPropertyName("img")]
+    public string? ImagePath { get; set; }
+
+    /// <summary>
+    /// OpenDota hero images are served from the official Valve/Steam CDN.
+    /// Prefer the metadata image path; fall back to the Valve internal hero slug.
+    /// Never download images from arbitrary URLs supplied by API responses.
+    /// </summary>
+    public string PortraitUrl
+    {
+        get
+        {
+            const string cdn = "https://cdn.cloudflare.steamstatic.com";
+            if (!string.IsNullOrWhiteSpace(ImagePath) &&
+                ImagePath.StartsWith("/apps/dota2/images/", StringComparison.OrdinalIgnoreCase))
+                return cdn + ImagePath.TrimEnd('?');
+
+            const string prefix = "npc_dota_hero_";
+            var slug = InternalName.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
+                ? InternalName[prefix.Length..]
+                : InternalName;
+
+            return !string.IsNullOrWhiteSpace(slug) &&
+                   slug.All(c => char.IsAsciiLetterOrDigit(c) || c == '_')
+                ? cdn + "/apps/dota2/images/dota_react/heroes/" + slug + ".png"
+                : "";
+        }
+    }
+
     public override string ToString() => Name;
 }
 
@@ -59,6 +88,7 @@ public sealed class HeroStats
     [JsonPropertyName("7_win")] public long? Wins7 { get; set; }
     [JsonPropertyName("8_pick")] public long? Picks8 { get; set; }
     [JsonPropertyName("8_win")] public long? Wins8 { get; set; }
+    [JsonPropertyName("img")] public string? ImagePath { get; set; }
     [JsonPropertyName("pro_pick")] public long? ProPicks { get; set; }
     [JsonPropertyName("pro_win")] public long? ProWins { get; set; }
 
@@ -183,6 +213,8 @@ public sealed record Recommendation(
     public string RankLabel => PositionInRanking > 0 ? $"#{PositionInRanking}" : "";
     public string ScoreBreakdown { get; init; } = "";
     public string CounterpickSummary { get; init; } = "";
+    public string CompactWinRate { get; init; } = "WR —";
+    public string CompactCounterpick { get; init; } = "Контрпик —";
     public string FavoriteMark => IsFavorite ? "★" : "☆";
     public string MetaLabel { get; init; } = "Общий WR: нет данных";
     public string PopularityLabel { get; init; } = "Популярность: нет данных";
