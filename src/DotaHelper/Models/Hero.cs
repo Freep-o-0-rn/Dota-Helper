@@ -110,10 +110,16 @@ public sealed record PoolOption(HeroPoolMode Mode, string Label)
     public override string ToString() => Label;
 }
 
+public sealed record EnemyPositionOption(int Position, string Label)
+{
+    public override string ToString() => Label;
+}
+
 public sealed class DraftSlot : INotifyPropertyChanged
 {
     private Hero? _selectedHero;
     private bool _isLaneOpponent;
+    private int _enemyPosition;
 
     public DraftSlot(string label) => Label = label;
 
@@ -126,6 +132,19 @@ public sealed class DraftSlot : INotifyPropertyChanged
         {
             if (ReferenceEquals(_selectedHero, value)) return;
             _selectedHero = value;
+            OnPropertyChanged();
+            Changed?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    /// <summary>Enemy lane position: 1 carry, 2 mid, 3 offlane, 4/5 supports; 0 unknown.</summary>
+    public int EnemyPosition
+    {
+        get => _enemyPosition;
+        set
+        {
+            if (value is < 0 or > 5 || _enemyPosition == value) return;
+            _enemyPosition = value;
             OnPropertyChanged();
             Changed?.Invoke(this, EventArgs.Empty);
         }
@@ -163,6 +182,7 @@ public sealed record Recommendation(
     public int PositionInRanking { get; init; }
     public string RankLabel => PositionInRanking > 0 ? $"#{PositionInRanking}" : "";
     public string ScoreBreakdown { get; init; } = "";
+    public string CounterpickSummary { get; init; } = "";
     public string FavoriteMark => IsFavorite ? "★" : "☆";
     public string MetaLabel { get; init; } = "Общий WR: нет данных";
     public string PopularityLabel { get; init; } = "Популярность: нет данных";
