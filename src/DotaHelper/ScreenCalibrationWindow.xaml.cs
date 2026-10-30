@@ -54,7 +54,7 @@ public partial class ScreenCalibrationWindow : Window
         Draw(SelectionRectangle, _start.Value, _start.Value);
     }
 
-    private void Surface_Move(object sender, MouseEventArgs e)
+    private void Surface_Move(object sender, System.Windows.Input.MouseEventArgs e)
     {
         if (_start is Point start)
             Draw(SelectionRectangle, start, e.GetPosition(Surface));
