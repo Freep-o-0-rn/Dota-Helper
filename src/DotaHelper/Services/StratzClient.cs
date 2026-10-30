@@ -128,6 +128,147 @@ public sealed class StratzClient
         finally { _requestLock.Release(); }
     }
 
+
+    private readonly SemaphoreSlim _matchupGate = new(2, 2);
+
+    /// <summary>
+    /// STRATZ heroStats.matchUp: each row counts wins by the queried enemy.
+    /// Only bracketBasicIds is filtered (two adjacent medals). This query
+    /// is NOT patch-specific or position-specific. Results are disk-cached.
+    /// </summary>
+    public async Task<(IReadOnlyList<Matchup> Rows, bool Stale)> GetMatchupsAsync(
+        int enemyHeroId, int rank, bool professional)
+    {
+        if (enemyHeroId <= 0) throw new ArgumentOutOfRangeException(nameof(enemyHeroId));
+        var bracket = BracketName(rank, professional);
+        var cacheFile = Path.Combine(_cacheDirectory,
+            $"stratz-matchup-{enemyHeroId}-{bracket}.json");
+        Directory.CreateDirectory(_cacheDirectory);
+
+        async Task<(IReadOnlyList<Matchup> Rows, bool Stale)?> ReadCacheAsync(bool stale)
+        {
+            try
+            {
+                if (!File.Exists(cacheFile)) return null;
+                var result = ParseMatchups(await File.ReadAllTextAsync(cacheFile), enemyHeroId);
+                if (result.Count == 0) return null;
+                return (result, stale);
+            }
+            catch (Exception ex) when (ex is IOException or JsonException or UnauthorizedAccessException)
+            {
+                return null;
+            }
+        }
+
+        if (File.Exists(cacheFile) &&
+            DateTime.UtcNow - File.GetLastWriteTimeUtc(cacheFile) < TimeSpan.FromHours(6))
+        {
+            var existing = await ReadCacheAsync(false);
+            if (existing.HasValue) return existing.Value;
+        }
+
+        var token = Environment.GetEnvironmentVariable("STRATZ_API_TOKEN");
+        if (string.IsNullOrWhiteSpace(token))
+        {
+            var offline = await ReadCacheAsync(true);
+            if (offline.HasValue) return offline.Value;
+            throw new InvalidOperationException("Нет STRATZ_API_TOKEN для матчапов.");
+        }
+
+        await _matchupGate.WaitAsync();
+        try
+        {
+            if (File.Exists(cacheFile) &&
+                DateTime.UtcNow - File.GetLastWriteTimeUtc(cacheFile) < TimeSpan.FromHours(6))
+            {
+                var cached = await ReadCacheAsync(false);
+                if (cached.HasValue) return cached.Value;
+            }
+
+            var bracketFilter = bracket == "ALL" ? "" : $", bracketBasicIds: [{bracket}]";
+            var query = "query { heroStats { matchUp(heroId: " +
+                enemyHeroId + bracketFilter +
+                ", take: 200) { vs { heroId2 winCount matchCount } } } }";
+            using var request = new HttpRequestMessage(
+                HttpMethod.Post, "https://api.stratz.com/graphql");
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token.Trim());
+            request.Headers.UserAgent.ParseAdd("DotaHelper/0.6");
+            request.Content = new StringContent(
+                JsonSerializer.Serialize(new { query }), Encoding.UTF8, "application/json");
+            using var response = await Http.SendAsync(request);
+            if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
+                throw new InvalidOperationException("STRATZ отклонил API-токен.");
+            response.EnsureSuccessStatusCode();
+            var json = await response.Content.ReadAsStringAsync();
+            var parsed = ParseMatchups(json, enemyHeroId);
+            if (parsed.Count == 0)
+                throw new InvalidOperationException("STRATZ не вернул достоверных матчапов.");
+            try { await File.WriteAllTextAsync(cacheFile, json); }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+            return (parsed, false);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException
+            or JsonException or InvalidOperationException)
+        {
+            var cached = await ReadCacheAsync(true);
+            if (cached.HasValue) return cached.Value;
+            if (ex is InvalidOperationException) throw;
+            throw new InvalidOperationException("Запрос матчапов STRATZ недоступен.", ex);
+        }
+        finally
+        {
+            _matchupGate.Release();
+        }
+    }
+
+    /// <summary>
+    /// Parses STRATZ GraphQL heroStats.matchUp, preserving enemy wins.
+    /// Returns empty list for legitimate "no matches" results.
+    /// </summary>
+    public static IReadOnlyList<Matchup> ParseMatchups(string json, int queriedHeroId)
+    {
+        using var root = JsonDocument.Parse(json);
+        if (root.RootElement.TryGetProperty("errors", out var errors) &&
+            errors.ValueKind == JsonValueKind.Array && errors.GetArrayLength() > 0)
+            throw new JsonException("STRATZ вернул ошибку GraphQL matchUp.");
+        if (!root.RootElement.TryGetProperty("data", out var data) ||
+            !data.TryGetProperty("heroStats", out var stats) ||
+            !stats.TryGetProperty("matchUp", out var groups) ||
+            groups.ValueKind != JsonValueKind.Array)
+            throw new JsonException("Некорректный ответ STRATZ matchUp.");
+
+        var aggregate = new Dictionary<int, Matchup>();
+        foreach (var group in groups.EnumerateArray())
+        {
+            if (!group.TryGetProperty("vs", out var vs) ||
+                vs.ValueKind != JsonValueKind.Array) continue;
+            foreach (var row in vs.EnumerateArray())
+            {
+                if (!row.TryGetProperty("heroId2", out var idField) ||
+                    !row.TryGetProperty("matchCount", out var countField) ||
+                    !row.TryGetProperty("winCount", out var winsField) ||
+                    idField.ValueKind != JsonValueKind.Number ||
+                    countField.ValueKind != JsonValueKind.Number ||
+                    winsField.ValueKind != JsonValueKind.Number) continue;
+                var id = idField.GetInt32();
+                var games = countField.GetInt32();
+                var wins = winsField.GetInt32();
+                if (id <= 0 || id == queriedHeroId || games < 20 ||
+                    wins < 0 || wins > games) continue;
+
+                // Multiple groups may describe the same opponent. Prefer
+                // the largest sample, rather than double-counting overlap.
+                if (!aggregate.TryGetValue(id, out var prev) ||
+                    prev.GamesPlayed < games)
+                    aggregate[id] = new Matchup
+                    {
+                        HeroId = id, GamesPlayed = games, Wins = wins
+                    };
+            }
+        }
+        return aggregate.Values.ToArray();
+    }
+
     // Public so deterministic tests can validate real API schema without a token.
     public static IReadOnlyList<PositionSample> Parse(string json)
     {
