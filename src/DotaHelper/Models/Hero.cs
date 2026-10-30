@@ -18,6 +18,10 @@ public sealed class Hero
     [JsonPropertyName("roles")]
     public string[] Roles { get; set; } = [];
 
+    [JsonPropertyName("primary_attr")]
+    public string? PrimaryAttribute { get; set; }
+
+
     [JsonPropertyName("img")]
     public string? ImagePath { get; set; }
 
