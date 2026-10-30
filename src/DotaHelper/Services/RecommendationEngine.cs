@@ -17,7 +17,8 @@ public sealed class RecommendationEngine
         IReadOnlyDictionary<int, IReadOnlyList<Matchup>> enemyMatchups,
         IReadOnlyDictionary<int, HeroStats>? heroStatistics = null,
         int rankBracket = 0,
-        HeroPoolMode pool = HeroPoolMode.Common)
+        HeroPoolMode pool = HeroPoolMode.Common,
+        bool professionalMeta = false)
     {
         var alreadyPicked = allies.Concat(enemies)
             .Select(slot => slot.SelectedHero?.Id)
@@ -33,8 +34,11 @@ public sealed class RecommendationEngine
             .ToList();
 
         var stats = heroStatistics ?? new Dictionary<int, HeroStats>();
+        (long Picks, long Wins) ReadStats(HeroStats h) =>
+            professionalMeta ? h.InProMatches() : h.InBracket(rankBracket);
+
         var heroPicks = heroes.ToDictionary(h => h.Id, h =>
-            stats.TryGetValue(h.Id, out var data) ? Math.Max(0L, data.InBracket(rankBracket).Picks) : 0L);
+            stats.TryGetValue(h.Id, out var data) ? Math.Max(0L, ReadStats(data).Picks) : 0L);
         var knownPicks = heroPicks.Values.Where(p => p > 0).OrderBy(p => p).ToArray();
         var totalPicks = knownPicks.Sum(p => (double)p);
         var medianPicks = knownPicks.Length == 0 ? 0.0 : knownPicks[knownPicks.Length / 2];
@@ -91,7 +95,7 @@ public sealed class RecommendationEngine
             // Missing matchups contribute exactly neutral, never a fabricated edge.
             // Matchups are not filtered to the currently running Dota patch.
             var matchupAdjustment = possibleWeight > 0
-                ? Math.Clamp(weightedEdge / possibleWeight * 45.0, -10.0, 10.0)
+                ? Math.Clamp(weightedEdge / possibleWeight * 70.0, -17.0, 17.0)
                 : 0;
 
             var isStandard = PositionProfile.IsStandard(hero, position);
@@ -101,26 +105,27 @@ public sealed class RecommendationEngine
             var favorite = favorites.Contains(hero.Id);
             double metaAdjustment = 0;
             double popularityAdjustment = 0;
-            string metaLabel = "Общий WR (все роли): нет данных";
-            string popularityLabel = "Популярность (все роли): нет данных";
+            var sourceName = professionalMeta ? "Профи" : "По рангу";
+            string metaLabel = $"{sourceName}: WR (все роли) — нет данных";
+            string popularityLabel = $"{sourceName}: популярность — нет данных";
             var picks = heroPicks.GetValueOrDefault(hero.Id);
             bool rare = IsRare(hero.Id);
 
             if (stats.TryGetValue(hero.Id, out var record))
             {
-                var (p, w) = record.InBracket(rankBracket);
+                var (p, w) = ReadStats(record);
                 if (p >= 100 && w >= 0 && w <= p)
                 {
                     // Beta(100,100) smoothing; scale is intentionally modest.
                     var winRate = (w + 100.0) / (p + 200.0);
                     metaAdjustment = Math.Clamp((winRate - .5) * 40.0, -5.0, 5.0);
-                    metaLabel = $"Общий WR (все роли): {100.0 * w / p:F1}% ({p:N0} пиков)";
+                    metaLabel = $"{sourceName}: WR (все роли) {100.0 * w / p:F1}% ({p:N0} пиков)";
                 }
 
                 if (p > 0 && totalPicks > 0)
                 {
                     var pickRate = 1000.0 * p / totalPicks;
-                    popularityLabel = $"Частота выбора (все роли): ≈{pickRate:F1}% матчей";
+                    popularityLabel = $"{sourceName}: частота выбора (все роли) ≈{pickRate:F1}% матчей";
                 }
 
                 if (p > 0 && medianPicks > 0)
@@ -144,7 +149,9 @@ public sealed class RecommendationEngine
                 $"общий WR {metaAdjustment:+0.0;-0.0;0.0}; " +
                 $"популярность {popularityAdjustment:+0.0;-0.0;0.0}; " +
                 $"избранное {(favorite ? "+4.0" : "0.0")}.";
-            string details = $"{roleLabel}. Синергии, патч и статистика линии пока не учтены.";
+            string details = $"{roleLabel}. Контрпики: OpenDota лиги (не выборка твоего ранга). " +
+                "Враги на линии имеют двойной вес; это общие матчапы, не статистика линии. " +
+                "Синергии, патч и статистика по позициям пока не учтены.";
             ranked.Add(new Recommendation(hero, score, measured, pickedEnemies.Count,
                 games, favorite, details)
             {
