@@ -26,6 +26,15 @@ public sealed class OpenDotaClient
         return heroes.OrderBy(h => h.Name).ToList();
     }
 
+    public async Task<PlayerProfile> GetPlayerProfileAsync(long accountId)
+    {
+        if (accountId <= 0 || accountId > uint.MaxValue)
+            throw new ArgumentOutOfRangeException(nameof(accountId), "Нужен Steam account_id (32-bit).");
+
+        return await GetCachedAsync<PlayerProfile>(
+            $"player-{accountId}.json", $"players/{accountId}", TimeSpan.FromMinutes(30));
+    }
+
     public async Task<IReadOnlyList<HeroStats>> GetHeroStatsAsync() =>
         await GetCachedAsync<List<HeroStats>>(
             "hero-stats.json", "heroStats", TimeSpan.FromHours(3));
