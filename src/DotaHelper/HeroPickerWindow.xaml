@@ -57,7 +57,7 @@
             <Button Tag="{Binding}" Click="Hero_Click"
                     ToolTip="{Binding Hero.Name}"
                     ToolTipService.ShowOnDisabled="True"
-                    Width="43" Height="29" Padding="0" Margin="2"
+                    Width="48" Height="32" Padding="0" Margin="1"
                     Background="#172532">
                 <Button.Style>
                     <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
@@ -70,7 +70,7 @@
                         </Style.Triggers>
                     </Style>
                 </Button.Style>
-                <Border CornerRadius="3" ClipToBounds="True"
+                <Border CornerRadius="4" ClipToBounds="True"
                         BorderBrush="#3F5365" BorderThickness="1">
                     <Grid>
                         <!-- Keep the complete horizontal Valve portrait visible:

@@ -1,7 +1,7 @@
 <Window x:Class="DotaHelper.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Dota Helper — Draft Assistant 0.9.1"
+        Title="Dota Helper — Draft Assistant 0.10"
         Width="1520" Height="850" MinWidth="1120" MinHeight="690"
         Background="#101722" Foreground="#E9F0F5" FontFamily="Segoe UI"
         Loaded="Window_Loaded">
@@ -368,7 +368,7 @@
                     <TextBlock Text="DOTA HELPER" FontSize="21" FontWeight="Bold"
                                Foreground="#E0B76F"/>
                     <DockPanel>
-                        <TextBlock Text="DRAFT ASSISTANT · 0.9.1" FontSize="10"
+                        <TextBlock Text="DRAFT ASSISTANT · 0.10" FontSize="10"
                                    Foreground="#9AAEBF" Margin="0,0,15,0"/>
                         <TextBlock Text="{Binding PatchDisplay}" FontSize="10"
                                    Foreground="#80CDB7"/>
@@ -422,6 +422,22 @@
                         <TextBlock Text="Ранг влияет на статистику, а не на число банов."
                                    Foreground="#7790A3" FontSize="10" Margin="0,7,0,6"
                                    TextWrapping="Wrap"/>
+                        <Border Background="#182F36" BorderBrush="#3B6F69"
+                                BorderThickness="1" CornerRadius="9"
+                                Padding="8" Margin="0,12,0,0">
+                            <StackPanel>
+                                <TextBlock Text="АВТОМАТИЧЕСКИЙ ДРАФТ"
+                                           Foreground="#76D0BF" FontSize="11"
+                                           FontWeight="Bold" Margin="0,0,0,6"/>
+                                <Button x:Name="GsiButton" Content="Подключить Dota 2"
+                                        Background="#326F61" FontSize="12"
+                                        Click="ConnectGsi_Click"/>
+                                <TextBlock Text="{Binding GsiStatus}" Foreground="#A8C4C9"
+                                           FontSize="10" TextWrapping="Wrap"
+                                           Margin="0,7,0,0"
+                                           ToolTip="GSI может не передавать все пики в All Pick. Программа не угадывает скрытых героев."/>
+                            </StackPanel>
+                        </Border>
                         <Expander Header="STEAM-ПРОФИЛЬ И API" IsExpanded="False"
                                   Foreground="#DDBD82" Margin="0,15,0,5">
                             <StackPanel Margin="0,10,0,4">
@@ -439,7 +455,7 @@
                         </Expander>
                         <Expander Header="СПРАВКА И ОГРАНИЧЕНИЯ" IsExpanded="False"
                                   Foreground="#DDBD82" Margin="0,8,0,0">
-                            <TextBlock Text="Пики Radiant/Dire. Баны All Pick общие для матча; в Captains Mode — семь на сторону. CTR/WR из STRATZ не фильтруются строго по актуальному патчу. Условный балл не является вероятностью победы."
+                            <TextBlock Text="Пики Radiant/Dire. Баны All Pick общие для матча; в Captains Mode — семь на сторону. GSI сообщает только доступные Dota 2 данные: в обычном All Pick чужие пики могут отсутствовать. Ручной выбор остаётся доступен. CTR/WR из STRATZ не фильтруются строго по актуальному патчу. Условный балл не является вероятностью победы."
                                        TextWrapping="Wrap" Foreground="#9AAFBF"
                                        FontSize="11" Margin="0,9,0,0"/>
                         </Expander>
